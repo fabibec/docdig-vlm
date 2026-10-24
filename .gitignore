@@ -1,8 +1,11 @@
 .venv
 .env
+.ruff_cache
 __pycache__/
 data/output/
 lib/
 .cache
-*.gguf
-
+models
+!models/prompt.txt
+!src/pipeline/models
+data/web

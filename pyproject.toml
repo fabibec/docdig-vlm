@@ -5,13 +5,30 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "fastapi>=0.136.3",
+    "genai-prices>=0.1.13",
+    "granian>=2.8.5",
+    "h2>=4.4.1",
     "httpx>=0.28.1",
+    "openai>=3.31.0",
     "opencv-python>=5.0.0.93",
+    "pdf2image>=1.17.0",
+    "pydantic>=2.14.1",
+    "pydantic-settings>=2.16.0",
     "python-dotenv>=1.2.4",
+    "python-multipart>=0.0.32",
+    "rapidfuzz>=3.14.6",
+    "sqlalchemy>=2.1.6",
+    "tabulate>=0.10.0",
     "truststore>=0.10.5",
+    "uvloop>=0.23.0",
+    "vllm>=0.31.0",
 ]
 
 [dependency-groups]
 dev = [
     "ruff>=0.17.0",
 ]
+
+[tool.uv.sources]
+llama-cpp-python = { path = "/home/fabi/Downloads/llama_cpp_python-0.4.2+cu131-cp312-cp312-linux_x86_64.whl" }

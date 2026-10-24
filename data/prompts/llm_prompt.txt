@@ -1,0 +1,19 @@
+You read ONE scanned page of a bird ringing form at time.
+The image is a crop of the table containing exactly one header row and 50 data rows.
+Return the table with the response schema you were given.
+
+The observations were recorded by the Vogelwarte Sempach in Switzerland.
+
+Rules:
+1. Copy what is written. Do not invent values. Empty cells stay "".
+2. Every printed data row must appear in `rows`, in the same order, even if it is empty.
+3. Species ('Espèce'):
+   - If the written name clearly matches an allowed species, return the allowed name exactly.
+   - If it looks like an allowed name but is not sure, return the closest allowed name AND add an uncertainty.
+   - If it matches nothing in the list, return the text as written AND add an uncertainty with reason 'not in species list'.
+   - Ditto marks (II, ii, ll, 11, 1, ", '', dito, do.) mean "same as the row above": return the species of the row above.
+4. Sex ('♂ Sexe ♀'): keep the symbols as printed (♂, ♀, (♂), (♀), ×).
+5. Time ('Heure'): write HH:MM. Do not change the digits, only the format.
+6. Any cell you cannot read with confidence: add an uncertainty (row_number, column, value_read, reason, best_guess, confidence).
+7. Also report unclear handwriting, smudges, crossed-out values and cut-off rows as uncertainties.
+8. Set page_confidence low if many cells are unclear.
