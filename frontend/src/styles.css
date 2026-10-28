@@ -137,3 +137,20 @@
     appearance: textfield; /* Added for general compatibility */
   }
 }
+/* ---------- small app-wide building blocks ---------- */
+@layer components {
+  .card { @apply rounded-lg border border-border bg-card text-card-foreground; }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-md bg-primary px-3.5 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:pointer-events-none disabled:opacity-50;
+  }
+  .btn-outline {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-50;
+  }
+  .btn-icon {
+    @apply inline-flex size-8 items-center justify-center rounded-md transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-40;
+  }
+  .input {
+    @apply w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50;
+  }
+  .viewer-frame { @apply max-h-[75vh] overflow-auto rounded-md border border-border bg-muted; }
+}
