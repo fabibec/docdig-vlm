@@ -1,34 +1,36 @@
 from pathlib import Path
-from typing import ClassVar
 
-from dotenv import load_dotenv
-from pydantic import field_validator
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from backend.pipeline.directories import DATA_DIR, PROJECT_ROOT
 
-import secrets
-
 
 class Settings(BaseSettings):
-    """Read from environment variables (prefix WEB_) or a .env file in the working directory."""
+    """Web app settings. Env vars with prefix ``WEB_`` or the project ``.env``.
+
+    Volume layout under ``data_dir`` (see docs/backend.md):
+        state/app.db                 local state, never synced
+        batches/<batch>/<doc>/...    artifact tree (input, raw, cropped, processed)
+    """
+
     model_config = SettingsConfigDict(env_file=PROJECT_ROOT / ".env", env_prefix="WEB_", extra="ignore")
 
-    load_dotenv()
+    data_dir: Path = DATA_DIR
+    db_path: Path | None = None  # default: <data_dir>/state/app.db
+    frontend_dir: Path = PROJECT_ROOT / "frontend" / "dist" / "browser"
+    pool_size: int = 2  # parallel documents (processes)
+    max_upload_mb: int = 200  # per file
 
-    web_dir: ClassVar[Path] = DATA_DIR / "web"
-    web_dir.mkdir(parents=True, exist_ok=True)
+    @model_validator(mode="after")
+    def _resolve(self):
+        self.data_dir = self.data_dir.resolve()
+        self.db_path = (self.db_path or self.data_dir / "state" / "app.db").resolve()
+        return self
 
-    data_dir: Path = DATA_DIR # uploads + pipeline output
-    db_path: Path = web_dir / "app.db"  # kept OUTSIDE data_dir so /artifacts can't leak it
-    api_url: str = "http://127.0.0.1:8000" # where the worker reaches the API
-    internal_token: str = secrets.token_urlsafe(32) # shared secret for /internal/events
-    cors_origins: list[str] = ["http://localhost:4200"] # env value must be JSON: '["https://a.org","https://b.org"]'
-
-    @field_validator("data_dir", "db_path")
-    @classmethod
-    def _absolute(cls, v: Path) -> Path:
-        return v.resolve()
+    @property
+    def batches_dir(self) -> Path:
+        return self.data_dir / "batches"
 
 
 settings = Settings()

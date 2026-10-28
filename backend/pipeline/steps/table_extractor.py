@@ -4,12 +4,15 @@ from typing import Literal
 import cv2
 import numpy as np
 
-from backend.pipeline.models.pipeline_parts import PipelineStep, PipelineTask
+from backend.pipeline.models.pipeline_parts import PipelineStep, PipelineTask, page_stem
+from backend.pipeline.models.results import PageGeometry
 
 SplitMode = Literal["table", "row", "col"]
 
 
 class TableExtractor(PipelineStep):
+    name = "cropped"
+
     def setup(self):
         return super().setup()
 
@@ -105,6 +108,21 @@ class TableExtractor(PipelineStep):
             spans.append((first + 1, last, start, end))
         return spans
 
+    def drop_spurious_lines(lines: list[int], row_height: int, min_ratio: float = 0.75) -> list[int]:
+        """
+        Removes horizontal lines that are too close to their neighbour (e.g. an underlined
+        handwritten word detected as a grid line). Of two conflicting lines, the one whose
+        distance to the line before is closer to ``row_height`` is kept.
+        """
+        kept: list[int] = []
+        for y in lines:
+            if kept and y - kept[-1] < row_height * min_ratio:
+                if len(kept) >= 2 and abs(y - kept[-2] - row_height) < abs(kept[-1] - kept[-2] - row_height):
+                    kept[-1] = y
+                continue
+            kept.append(y)
+        return kept
+
     def span_name(stem: str, prefix: str, first: int, last: int) -> str:
         if first == last:
             return f"{stem}_{prefix}{first:02d}.jpg"
@@ -118,13 +136,14 @@ class TableExtractor(PipelineStep):
         split: SplitMode = "table",
         n: int = 1,
         outlines: bool = True,
-    ):
+        draw_rows: bool = False,
+    ) -> PageGeometry:
         """
         Detects the printed table on a scan and writes crops to disk.
 
         Args:
-            img_path: Path to the page image (e.g. ``data/output/img/scan_page_0.jpg``).
-            output_dir: Output directory (e.g. ``data/output/table``).
+            img_path: Path to the page image (e.g. ``data/output/raw/p001.jpg``).
+            output_dir: Output directory (e.g. ``data/output/cropped``).
             pad_top: Pixels kept above the first row line.
             pad_sides: Pixels kept left/right of the outer column lines.
             split: What to crop out of the table.
@@ -136,6 +155,12 @@ class TableExtractor(PipelineStep):
                 row/column separately.
             outlines: Draws detected tables outlines into the original image and stores
                 the result under output_dir / "outlines"
+            draw_rows: Draws the detected row/column grid into the cropped table and
+                stores the result under output_dir / "grid" (visual check of the geometry).
+
+        Returns:
+            The table geometry in pixels of the cropped table image. It is also written
+            to ``output_dir / "<stem>.geom.json"``.
 
         Raises:
             FileNotFoundError: If the image cannot be read.
@@ -196,6 +221,7 @@ class TableExtractor(PipelineStep):
             if len(valid_row_centers) > 5
             else 35
         )
+        valid_row_centers = TableExtractor.drop_spurious_lines(valid_row_centers, row_height)
 
         # Group joint centers by X-coordinate and require at least 5 dots vertically per column line
         joint_pts_sorted_x = joint_pts[np.argsort(joint_pts[:, 0])]
@@ -257,10 +283,49 @@ class TableExtractor(PipelineStep):
                 out_dir.mkdir(parents=True, exist_ok=True)
                 cv2.imwrite(str(out_path), img[y1:y2, xs:xe])
 
-    def execute(self, task: PipelineTask):
-        input_dir = task.last_step_output_directory
-        output_dir = task.output_directory / "table"
-        task.last_step_output_directory = output_dir
+        # Geometry relative to the cropped table. Lines: top border, header bottom, then one
+        # line below every data row. The bottom border is added if it is missing (paper edge).
+        lines = list(valid_row_centers)
+        if y2 > lines[-1] + row_height // 2:
+            lines.append(y2)
+        lines = [max(0, y - y1) for y in lines]
+        geometry = PageGeometry(
+            width=x2 - x1,
+            height=y2 - y1,
+            skew_angle=round(skew_angle, 3),
+            header=(lines[0], lines[1]),
+            row_bounds=list(zip(lines[1:-1], lines[2:])),
+            col_bounds=[x - x1 for x in valid_col_centers],
+        )
+        (output_dir / f"{img_path.stem}.geom.json").write_text(
+            geometry.model_dump_json(indent=2), encoding="utf-8"
+        )
 
-        for image in sorted(p for p in input_dir.iterdir() if p.is_file()):
-            TableExtractor.extract_printed_table(image, output_dir)
+        if draw_rows:
+            grid_dir = output_dir / "grid"
+            grid_dir.mkdir(parents=True, exist_ok=True)
+            vis = img[y1:y2, x1:x2].copy()
+            for i, (ys, ye) in enumerate(geometry.row_bounds, 1):
+                color = (0, 0, 255) if i % 2 else (255, 0, 0)
+                cv2.rectangle(vis, (2, ys + 2), (geometry.width - 3, ye - 2), color, 2)
+                cv2.putText(vis, str(i), (6, ye - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+            for x in geometry.col_bounds:
+                cv2.line(vis, (x, 0), (x, geometry.height), (0, 160, 0), 2)
+            cv2.imwrite(str(grid_dir / f"{img_path.stem}.jpg"), vis)
+
+        return geometry
+
+    def __init__(self, draw_rows: bool = False):
+        self.draw_rows = draw_rows
+
+    def execute(self, task: PipelineTask):
+        """Step 2: ``raw/pNNN.jpg`` -> ``cropped/pNNN.jpg`` + ``cropped/pNNN.geom.json``."""
+        input_dir = task.step_dir("raw")
+        output_dir = task.step_dir(self.name)
+
+        nums = task.page_nums("raw")
+        for i, num in enumerate(nums, 1):
+            TableExtractor.extract_printed_table(
+                input_dir / f"{page_stem(num)}.jpg", output_dir, draw_rows=self.draw_rows
+            )
+            task.report(self.name, i, len(nums))

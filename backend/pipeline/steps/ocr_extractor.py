@@ -1,15 +1,18 @@
-import re
-
 from PIL import Image
-from vllm import LLM
 
 from backend.pipeline.directories import PROJECT_ROOT, PROMPT_DIR
-from backend.pipeline.models.pipeline_parts import PipelineStep, PipelineTask
+from backend.pipeline.models.pipeline_parts import PipelineStep, PipelineTask, page_stem
 from backend.pipeline.settings import settings
 
 
 class OcrExtractor(PipelineStep):
+    """Optional local OCR on ``cropped/`` -> ``ocr/pNNN.md``. Needs the ``ocr`` dependency group."""
+
+    name = "ocr"
+
     def setup(self):
+        from vllm import LLM
+
         self.model = LLM(
             model=settings.ocr_model,
             tensor_parallel_size=1,
@@ -68,20 +71,11 @@ class OcrExtractor(PipelineStep):
         return text
 
     def execute(self, task: PipelineTask):
-        provider_id, model_ref = settings.ocr_model.split("/")
-
-        input_dir = task.last_step_output_directory
-        output_dir = task.output_directory / "llms" / provider_id / model_ref
+        input_dir = task.step_dir("cropped")
+        output_dir = task.step_dir(self.name)
         output_dir.mkdir(parents=True, exist_ok=True)
-        task.last_step_output_directory = output_dir
 
-        # Natural sort so that scan_page_2 comes before scan_page_10
-        img_files = sorted(
-            (f for f in input_dir.iterdir() if not f.is_dir()),
-            key=lambda f: [
-                int(t) if t.isdigit() else t for t in re.split(r"(\d+)", f.name)
-            ],
-        )
+        img_files = [input_dir / f"{page_stem(n)}.jpg" for n in task.page_nums("cropped")]
         images = [Image.open(fname).convert("RGB") for fname in img_files]
 
         vllm_inputs = [

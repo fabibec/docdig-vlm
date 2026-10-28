@@ -9,3 +9,7 @@ models
 !models/prompt.txt
 !backend/pipeline/models
 data/web
+
+# web app volume (state + artifacts)
+data/state/
+data/batches/

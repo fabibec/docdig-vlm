@@ -1,33 +1,39 @@
 [project]
-name = "test"
+name = "docdig"
 version = "0.1.0"
-description = "Add your description here"
+description = "Digitise handwritten bird ringing forms: PDF -> table crop -> LLM extraction -> human review"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
+# Runtime dependencies: everything the pipeline + web app need. This is exactly what the
+# Docker image installs (`uv sync --no-default-groups`), so keep heavy optional stuff out of here.
 dependencies = [
+    "aiosqlite>=0.22.1",
     "fastapi>=0.136.3",
     "genai-prices>=0.1.13",
     "granian>=2.8.5",
     "h2>=4.4.1",
-    "httpx>=0.28.1",
-    "nest-asyncio>=1.6.0",
     "openai>=3.31.0",
-    "opencv-python>=5.0.0.93",
+    "opencv-python-headless>=5.0.0.93",
     "pdf2image>=1.17.0",
     "pydantic>=2.14.1",
     "pydantic-settings>=2.16.0",
-    "python-dotenv>=1.2.4",
     "python-multipart>=0.0.32",
-    "rapidfuzz>=3.14.6",
-    "sqlalchemy>=2.1.6",
+    "sqlmodel>=0.0.48",
     "tabulate>=0.10.0",
     "truststore>=0.10.5",
     "uvloop>=0.23.0",
-    "vllm>=0.31.0",
 ]
 
 [dependency-groups]
 dev = [
     "ruff>=0.17.0",
 ]
+# Local OCR step (vLLM, GPU). Several GB, therefore never part of the Docker image.
+ocr = [
+    "vllm>=0.31.0",
+    "rapidfuzz>=3.14.6",
+]
 
+[tool.uv]
+# Plain `uv sync` locally installs everything (as before); Docker uses `--no-default-groups`.
+default-groups = ["dev", "ocr"]

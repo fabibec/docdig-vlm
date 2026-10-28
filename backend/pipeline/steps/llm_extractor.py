@@ -1,20 +1,27 @@
 import asyncio
 import base64
 import ssl
-import sys
 
-from pydantic import DirectoryPath, FilePath
 import truststore
 from genai_prices import Usage, calc_price
 from openai import AsyncOpenAI, DefaultAsyncHttpx2Client
+from pydantic import FilePath
 from tabulate import tabulate
 
 from backend.pipeline.models.llm_responses import ExtractionResult, PageTable
-from backend.pipeline.models.pipeline_parts import PipelineStep, PipelineTask
+from backend.pipeline.models.pipeline_parts import PipelineStep, PipelineTask, page_stem
 from backend.pipeline.settings import settings
 
 
+class LlmRefusal(RuntimeError):
+    """The model refused to answer; raised instead of exiting so pool workers survive."""
+
+
 class LlmExtractor(PipelineStep):
+    """Step 3: ``cropped/pNNN.jpg`` -> ``processed/pNNN.json`` (ExtractionResult) + ``.md``."""
+
+    name = "processed"
+
     def setup(self):
         ctx = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 
@@ -30,12 +37,11 @@ class LlmExtractor(PipelineStep):
         self.seed = settings.llm_seed
 
         self.concurrency = settings.step_concurrency
-        self._sem = None
-
 
         with settings.llm_prompt_file.open("r", encoding="utf-8") as f:
             self.prompt = f.read()
 
+    @staticmethod
     def _encode_image(path, mime="image/jpeg", detail="high"):
         with open(path, "rb") as f:
             b64 = base64.b64encode(f.read()).decode()
@@ -44,7 +50,7 @@ class LlmExtractor(PipelineStep):
             "image_url": {"url": f"data:{mime};base64,{b64}", "detail": detail},
         }
 
-    async def _llm_extraction(self, image: FilePath, output_dir: DirectoryPath):
+    async def _llm_extraction(self, image: FilePath) -> ExtractionResult:
         completion = await self.client.beta.chat.completions.parse(
             model=self.model,
             messages=[
@@ -63,18 +69,12 @@ class LlmExtractor(PipelineStep):
         )
 
         msg = completion.choices[0].message
-        if msg.refusal:
-            # model refused; msg.parsed is None
-            print(msg.refusal)
-            sys.exit(1)
-        else:
-            result = msg.parsed.model_dump()
+        if msg.refusal or msg.parsed is None:
+            raise LlmRefusal(f"{image.name}: {msg.refusal or 'no parsed output'}")
 
         u = completion.usage
         input_tokens = u.prompt_tokens
-        output_tokens = (
-            u.completion_tokens + u.completion_tokens_details.reasoning_tokens
-        )
+        output_tokens = u.completion_tokens + u.completion_tokens_details.reasoning_tokens
 
         price_data = calc_price(
             Usage(input_tokens=input_tokens, output_tokens=output_tokens),
@@ -82,44 +82,35 @@ class LlmExtractor(PipelineStep):
             provider_id=self.provider_id,
         )
 
-        result = ExtractionResult(
-            source="",
+        return ExtractionResult(
+            source=self.model,
             table=msg.parsed,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             estimated_cost=round(price_data.total_price, 3),
         )
 
-        (output_dir / f"{image.stem}.json").write_text(
-            result.model_dump_json(indent=2, ensure_ascii=False), encoding="utf-8"
-        )
-        (output_dir / f"{image.stem}.md").write_text(
-            tabulate(result.table.model_dump()["rows"], tablefmt="pipe"),
-            encoding="utf-8",
-        )
-
-    async def _run_all(self, images, output_dir):
+    async def _run_all(self, task: PipelineTask, nums: list[int]):
         sem = asyncio.Semaphore(self.concurrency)
+        in_dir, out_dir = task.step_dir("cropped"), task.step_dir(self.name)
+        done = 0
 
-        async def bounded(img):
+        async def bounded(num: int):
+            nonlocal done
             async with sem:
-                await self._llm_extraction(img, output_dir)
+                result = await self._llm_extraction(in_dir / f"{page_stem(num)}.jpg")
+            (out_dir / f"{page_stem(num)}.json").write_text(
+                result.model_dump_json(indent=2, ensure_ascii=False), encoding="utf-8"
+            )
+            (out_dir / f"{page_stem(num)}.md").write_text(
+                tabulate(result.table.model_dump()["rows"], headers="keys", tablefmt="pipe"),
+                encoding="utf-8",
+            )
+            done += 1
+            task.report(self.name, done, len(nums))
 
-        await asyncio.gather(*(bounded(img) for img in images))
+        await asyncio.gather(*(bounded(n) for n in nums))
 
     def execute(self, task: PipelineTask):
-        input_dir = task.last_step_output_directory
-        output_dir = task.output_directory / "llms" / self.provider_id / self.model_ref
-        output_dir.mkdir(parents=True, exist_ok=True)
-        task.last_step_output_directory = output_dir
-
-        asyncio.run(self._run_all(
-            sorted(p for p in input_dir.iterdir() if p.is_file()), output_dir
-        ))
-
-
-
-
-
-
-
+        task.step_dir(self.name).mkdir(parents=True, exist_ok=True)
+        asyncio.run(self._run_all(task, task.page_nums("cropped")))
