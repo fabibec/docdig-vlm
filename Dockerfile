@@ -19,7 +19,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-default-groups --no-install-project
 
 # ---------- 3) runtime ----------
-FROM python:3.12-slim-trixie
+FROM python:3.12-slim-trixie as final
 RUN apt-get update \
  && apt-get install -y --no-install-recommends poppler-utils \
  && rm -rf /var/lib/apt/lists/* \
