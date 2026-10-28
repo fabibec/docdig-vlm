@@ -4,7 +4,7 @@ from typing import Literal
 import cv2
 import numpy as np
 
-from backend.src.pipeline.models.pipeline_parts import PipelineStep, PipelineTask
+from backend.pipeline.models.pipeline_parts import PipelineStep, PipelineTask
 
 SplitMode = Literal["table", "row", "col"]
 

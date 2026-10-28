@@ -2,7 +2,7 @@ import tempfile
 
 from pdf2image import convert_from_path
 
-from backend.src.pipeline.models.pipeline_parts import PipelineStep, PipelineTask
+from backend.pipeline.models.pipeline_parts import PipelineStep, PipelineTask
 
 
 class ImgExtractor(PipelineStep):

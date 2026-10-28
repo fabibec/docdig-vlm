@@ -10,6 +10,7 @@ dependencies = [
     "granian>=2.8.5",
     "h2>=4.4.1",
     "httpx>=0.28.1",
+    "nest-asyncio>=1.6.0",
     "openai>=3.31.0",
     "opencv-python>=5.0.0.93",
     "pdf2image>=1.17.0",
@@ -30,5 +31,3 @@ dev = [
     "ruff>=0.17.0",
 ]
 
-[tool.uv.sources]
-llama-cpp-python = { path = "/home/fabi/Downloads/llama_cpp_python-0.4.2+cu131-cp312-cp312-linux_x86_64.whl" }

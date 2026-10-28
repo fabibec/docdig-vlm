@@ -5,7 +5,7 @@ import ssl
 import httpx
 import truststore
 
-from backend.src.pipeline.directories import OUTPUT_DIR
+from backend.pipeline.directories import OUTPUT_DIR
 
 
 def _add_entry_to_map(

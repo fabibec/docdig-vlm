@@ -6,13 +6,13 @@ import traceback
 import httpx
 from sqlalchemy import delete, select, update
 
-from backend.src.api.config import settings
-from backend.src.api.db import Doc, Flag, SessionLocal, init, now
-from backend.src.api.result import load_table, make_flags
+from backend.api.config import settings
+from backend.api.db import Doc, Flag, SessionLocal, init, now
+from backend.api.result import load_table, make_flags
 
 
-from backend.src.pipeline.models.pipeline_parts import Pipeline, PipelineTask
-from backend.src.pipeline.steps import ImgExtractor, TableExtractor, LlmExtractor
+from backend.pipeline.models.pipeline_parts import Pipeline, PipelineTask
+from backend.pipeline.steps import ImgExtractor, TableExtractor, LlmExtractor
 
 log = logging.getLogger("worker")
 

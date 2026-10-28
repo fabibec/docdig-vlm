@@ -21,10 +21,10 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from backend.src.api.config import settings
-from backend.src.api.db import Batch, Correction, Doc, Flag, get_db, init, now, slugify
-from backend.src.api.hub import hub
-from backend.src.api.result import COLS, load_table
+from backend.api.config import settings
+from backend.api.db import Batch, Correction, Doc, Flag, get_db, init, now, slugify
+from backend.api.hub import hub
+from backend.api.result import COLS, load_table
 
 
 @asynccontextmanager

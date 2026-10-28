@@ -3,7 +3,7 @@ from typing import Literal
 from pydantic import Field, FilePath, HttpUrl
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from backend.src.pipeline.directories import PROJECT_ROOT, PROMPT_DIR
+from backend.pipeline.directories import PROJECT_ROOT, PROMPT_DIR
 
 
 class Settings(BaseSettings):
@@ -21,6 +21,10 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_file=PROJECT_ROOT / ".env", env_file_encoding="utf-8", extra="allow"
+    )
+
+    step_concurrency: int = Field(
+        default=100
     )
 
 

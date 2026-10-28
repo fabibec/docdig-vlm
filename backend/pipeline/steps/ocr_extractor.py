@@ -3,9 +3,9 @@ import re
 from PIL import Image
 from vllm import LLM
 
-from backend.src.pipeline.directories import PROJECT_ROOT, PROMPT_DIR
-from backend.src.pipeline.models.pipeline_parts import PipelineStep, PipelineTask
-from backend.src.pipeline.settings import settings
+from backend.pipeline.directories import PROJECT_ROOT, PROMPT_DIR
+from backend.pipeline.models.pipeline_parts import PipelineStep, PipelineTask
+from backend.pipeline.settings import settings
 
 
 class OcrExtractor(PipelineStep):

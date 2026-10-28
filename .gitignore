@@ -7,5 +7,5 @@ lib/
 .cache
 models
 !models/prompt.txt
-!src/pipeline/models
+!backend/pipeline/models
 data/web

@@ -6,7 +6,7 @@ from collections.abc import Iterable
 
 from rapidfuzz import fuzz, process
 
-from backend.src.pipeline.bird_vocab import get_bird_vocab_dict
+from backend.pipeline.backup.bird_vocab import get_bird_vocab_dict
 
 # 1. Exact ditto tokens for Espèce
 DITTO_TOKENS = {"11", "4", "1", "II", "ii", "ll", '"', "''", "dito", "do."}

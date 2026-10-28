@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import ForeignKey, Index, create_engine, event
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 
-from backend.src.api.config import settings
+from backend.api.config import settings
 
 
 def now() -> str:
@@ -44,7 +44,6 @@ class Batch(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     slug: Mapped[str] = mapped_column(unique=True)
     name: Mapped[str]
-    from_folder: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[str] = mapped_column(default=now)
     docs: Mapped[list["Doc"]] = relationship(back_populates="batch", order_by="Doc.slug")
 

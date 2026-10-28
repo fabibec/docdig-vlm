@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from backend.src.pipeline.directories import DATA_DIR, PROJECT_ROOT
+from backend.pipeline.directories import DATA_DIR, PROJECT_ROOT
 
 import secrets
 
