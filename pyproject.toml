@@ -18,6 +18,7 @@ dependencies = [
     "pydantic>=2.14.1",
     "pydantic-settings>=2.16.0",
     "python-multipart>=0.0.32",
+    "sqlalchemy[asyncio]>=2.1.6",
     "sqlmodel>=0.0.48",
     "tabulate>=0.10.0",
     "truststore>=0.10.5",

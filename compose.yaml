@@ -1,0 +1,14 @@
+services:
+  docdig:
+    build: .
+    image: docdig:latest
+    ports:
+      - "8000:8000"
+    env_file: .env          # LLM_BASE_URL, LLM_API_KEY, LLM_MODEL_NAME, optional WEB_POOL_SIZE
+    volumes:
+      - docdig-data:/data   # state/app.db + batches/<batch>/<doc>/... artifacts
+      # - ./data/prompts:/app/prompts:ro   # override the LLM prompt without rebuilding
+    restart: unless-stopped
+
+volumes:
+  docdig-data:

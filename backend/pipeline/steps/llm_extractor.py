@@ -103,7 +103,7 @@ class LlmExtractor(PipelineStep):
                 result.model_dump_json(indent=2, ensure_ascii=False), encoding="utf-8"
             )
             (out_dir / f"{page_stem(num)}.md").write_text(
-                tabulate(result.table.model_dump()["rows"], headers="keys", tablefmt="pipe"),
+                tabulate(result.table.model_dump()["rows"], headers="keys", tablefmt="pipe", disable_numparse=True),
                 encoding="utf-8",
             )
             done += 1
