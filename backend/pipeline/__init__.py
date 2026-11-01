@@ -18,9 +18,10 @@ def build_pipeline(draw_rows: bool = False, ocr: bool = False) -> Pipeline:
     pipeline = Pipeline().add_step(ImgExtractor()).add_step(TableExtractor(draw_rows=draw_rows))
     if ocr:
         from backend.pipeline.steps import OcrExtractor
-
         pipeline.add_step(OcrExtractor())
-    return pipeline.add_step(LlmExtractor())
+    else:
+        pipeline.add_step(LlmExtractor())
+    return pipeline
 
 
 __all__ = [
