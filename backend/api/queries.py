@@ -91,7 +91,7 @@ async def refresh_doc_flags(session: AsyncSession, doc: Doc) -> None:
     """Recompute open_flags + review/done status (does not commit)."""
     open_flags = (
         await session.exec(
-            select(func.count()).select_from(Flag).where(Flag.doc_id == doc.id, Flag.resolved == False)  # noqa: E712
+            select(func.count()).select_from(Flag).where(Flag.doc_id == doc.id, Flag.resolved == False)
         )
     ).one()
     doc.open_flags = open_flags

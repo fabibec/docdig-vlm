@@ -9,7 +9,16 @@ cd frontend
 npm ci
 npm start        # ng serve on :4200; proxies /api and the WebSocket to :8000 (proxy.conf.json)
 npm run build    # -> frontend/dist/browser (what the backend serves)
+npm run lint     # ESLint (eslint.config.mjs); `npm run lint:fix` applies safe fixes
 ```
+
+Lint rules: `typescript-eslint` recommended + stylistic, `angular-eslint` TS + template + accessibility presets, plus:
+- `OnPush` is required.
+- Signal properties must be `readonly`.
+- Use `@if` / `@for` control flow and self-closing tags.
+- Use `===` everywhere.
+
+The vendored zard code (`shared/core`, `shared/utils`) is not linted.
 
 Start the backend alongside with `uv run granian --interface asgi --reload backend.api.app:app` (see [backend.md](backend.md)).
 
@@ -74,8 +83,9 @@ Route params arrive as component inputs (`withComponentInputBinding`).
 ### Review (`/review…`)
 
 Layout:
-- `xl`: three columns, records | editor | viewer.
-- `md` (tablet): records and editor stacked on the left, viewer on the right.
+- The shell is fixed to the viewport height and `<main>` is the scroll container.
+- `xl`: three columns, records | editor | viewer. The page fills exactly the space below the top bar (no page scroll) and each column scrolls on its own; the viewer uses `fill` mode.
+- `md` (tablet): records and editor stacked on the left, viewer on the right. The page scrolls normally.
 
 **Header:**
 - A file selector in batch/all scope, or the filename in file scope.

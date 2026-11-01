@@ -22,12 +22,12 @@ import { TPipe } from '../../core/i18n/i18n';
   `,
 })
 export class Paginator {
-  page = input.required<number>();
-  size = input.required<number>();
-  total = input.required<number>();
+  readonly page = input.required<number>();
+  readonly size = input.required<number>();
+  readonly total = input.required<number>();
   pageChange = output<number>();
 
-  pages = computed(() => Math.max(1, Math.ceil(this.total() / this.size())));
-  from = computed(() => (this.page() - 1) * this.size() + 1);
-  to = computed(() => Math.min(this.total(), this.page() * this.size()));
+  readonly pages = computed(() => Math.max(1, Math.ceil(this.total() / this.size())));
+  readonly from = computed(() => (this.page() - 1) * this.size() + 1);
+  readonly to = computed(() => Math.min(this.total(), this.page() * this.size()));
 }

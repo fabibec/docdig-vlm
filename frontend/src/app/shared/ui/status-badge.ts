@@ -19,7 +19,7 @@ const STYLES: Record<DocStatus, string> = {
     {{ 'status.' + status() | t }}@if (count() !== null) { · {{ count() }} }</span>`,
 })
 export class StatusBadge {
-  status = input.required<DocStatus>();
-  count = input<number | null>(null);
+  readonly status = input.required<DocStatus>();
+  readonly count = input<number | null>(null);
   protected styles = STYLES;
 }

@@ -33,6 +33,8 @@ const UNDO_MS = 10_000;
   imports: [TPipe, RouterLink, NgIcon, EmptyState, PipelineViewer, RecordEditor],
   providers: [provideIcons({ lucideCircleCheck })],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  // xl: fill exactly the space below the top bar (no page scroll); every column scrolls on its own.
+  host: { class: 'flex flex-col xl:min-h-0 xl:flex-1 xl:basis-0' },
   template: `
     @if (queue.hasValue()) {
       @let q = queue.value();
@@ -42,7 +44,7 @@ const UNDO_MS = 10_000;
           <a routerLink="/" class="btn-outline">{{ 'review.backHome' | t }}</a>
         </app-empty-state>
       } @else {
-        <div class="mb-4 flex flex-wrap items-center gap-x-6 gap-y-2">
+        <div class="mb-4 flex shrink-0 flex-wrap items-center gap-x-6 gap-y-2">
           @if (q.scope !== 'doc') {
             <label class="flex min-w-0 items-center gap-2 text-sm">
               <span class="text-muted-foreground">{{ 'review.file' | t }}</span>
@@ -62,12 +64,13 @@ const UNDO_MS = 10_000;
           </div>
         </div>
 
-        <div class="grid gap-4 md:grid-cols-[minmax(0,340px)_minmax(0,1fr)] xl:grid-cols-[260px_340px_minmax(0,1fr)]">
+        <div class="grid gap-4 md:grid-cols-[minmax(0,340px)_minmax(0,1fr)]
+                    xl:min-h-0 xl:flex-1 xl:grid-cols-[260px_340px_minmax(0,1fr)] xl:grid-rows-[minmax(0,1fr)]">
           <div class="flex min-w-0 flex-col gap-4 xl:contents">
             <!-- flagged records -->
-            <section class="card p-3">
+            <section class="card flex flex-col p-3 xl:min-h-0">
               <h2 class="mb-2 font-semibold">{{ 'review.records' | t }}</h2>
-              <div class="max-h-[40vh] overflow-auto pr-2 xl:max-h-[calc(100vh-14rem)]">
+              <div class="max-h-[40vh] overflow-y-auto overflow-x-hidden pr-2 xl:max-h-none xl:min-h-0 xl:flex-1">
                 @for (g of byPage(); track g.page) {
                   <h3 class="sticky top-0 bg-card py-1 text-xs font-medium uppercase text-muted-foreground">
                     {{ 'review.page' | t: { n: g.page } }}
@@ -102,7 +105,7 @@ const UNDO_MS = 10_000;
             </section>
 
             <!-- editor -->
-            <section class="card p-4">
+            <section class="card p-4 xl:min-h-0 xl:overflow-y-auto">
               @if (selected(); as rec) {
                 <app-record-editor [record]="rec" [values]="editorValues()" [busy]="busy()" [error]="saveError()"
                                    [(noteColumn)]="noteColumn" [(noteOpen)]="noteOpen"
@@ -115,9 +118,10 @@ const UNDO_MS = 10_000;
           </div>
 
           <!-- viewer -->
-          <section class="card min-w-0 p-4">
+          <section class="card flex min-w-0 flex-col p-4 xl:min-h-0">
             @if (detail.hasValue()) {
               <app-pipeline-viewer [slug]="slug()!" [pages]="detail.value().pages" [rows]="viewRows()" [interactive]="true"
+                                   [fill]="true"
                                    [selectedRow]="selected()?.page === page() ? selected()!.row : null"
                                    [flagged]="flaggedCells()" [(page)]="page" [(step)]="step"
                                    (cellClick)="pick($event)" />
@@ -150,14 +154,14 @@ export class ReviewPage {
   private i18n = inject(I18n);
 
   // route params (withComponentInputBinding)
-  batchSlug = input<string>();
-  docSlug = input<string>();
+  readonly batchSlug = input<string>();
+  readonly docSlug = input<string>();
 
   protected queue = httpResource<ReviewQueue>(() => this.api.reviewUrl({ batch: this.batchSlug(), doc: this.docSlug() }));
 
   /** File picked in the selector; falls back to the oldest file in the queue. A single-file route always shows its file. */
-  protected chosen = signal<string | null>(null);
-  protected slug = computed(() => {
+  protected readonly chosen = signal<string | null>(null);
+  protected readonly slug = computed(() => {
     if (this.docSlug()) return this.docSlug()!;
     if (!this.queue.hasValue()) return null;
     const docs = this.queue.value().docs;
@@ -167,7 +171,7 @@ export class ReviewPage {
   protected detail = httpResource<DocDetail>(() => (this.slug() ? this.api.docUrl(this.slug()!) : undefined));
   protected flags = httpResource<FlagOut[]>(() => (this.slug() ? this.api.flagsUrl(this.slug()!) : undefined));
 
-  protected records = computed<ReviewRecord[]>(() => {
+  protected readonly records = computed<ReviewRecord[]>(() => {
     const map = new Map<string, ReviewRecord>();
     for (const f of this.flags.hasValue() ? this.flags.value() : []) {
       const key = `${f.page}:${f.row}`;
@@ -176,7 +180,7 @@ export class ReviewPage {
     }
     return [...map.values()];
   });
-  protected byPage = computed(() => {
+  protected readonly byPage = computed(() => {
     const groups: { page: number; records: ReviewRecord[] }[] = [];
     for (const r of this.records()) {
       if (groups.at(-1)?.page !== r.page) groups.push({ page: r.page, records: [] });
@@ -185,43 +189,43 @@ export class ReviewPage {
     return groups;
   });
 
-  private selectedKey = signal<string | null>(null);
+  private readonly selectedKey = signal<string | null>(null);
   /** Row picked in the viewer that has no open flags. */
-  private picked = signal<ReviewRecord | null>(null);
-  protected selected = computed(() => {
+  private readonly picked = signal<ReviewRecord | null>(null);
+  protected readonly selected = computed(() => {
     const key = this.selectedKey();
     return this.records().find((r) => r.key === key) ?? (this.picked()?.key === key ? this.picked() : null);
   });
 
-  protected page = linkedSignal<number>(() => (this.slug() ? 1 : 1));
-  protected step = signal<ViewerStep>('cropped');
+  protected readonly page = linkedSignal<number>(() => (this.slug() ? 1 : 1));
+  protected readonly step = signal<ViewerStep>('cropped');
   protected rows = httpResource<PageRows>(() => (this.slug() ? this.api.rowsUrl(this.slug()!, this.page()) : undefined));
 
   /** Unsaved edits of the selected record; merged into the viewer rows for a live step-3 preview. */
-  protected draft = signal<Draft>({});
-  protected busy = signal(false);
-  protected saveError = signal(false);
-  protected actionError = signal(false);
-  protected noteColumn = signal<ColumnKey | null>(null);
-  protected noteOpen = signal(false);
-  protected lastSave = signal<LastSave | null>(null);
+  protected readonly draft = signal<Draft>({});
+  protected readonly busy = signal(false);
+  protected readonly saveError = signal(false);
+  protected readonly actionError = signal(false);
+  protected readonly noteColumn = signal<ColumnKey | null>(null);
+  protected readonly noteOpen = signal(false);
+  protected readonly lastSave = signal<LastSave | null>(null);
   private undoTimer?: ReturnType<typeof setTimeout>;
 
-  private selectedRowValues = computed(() => {
+  private readonly selectedRowValues = computed(() => {
     const sel = this.selected();
     if (!sel || !this.rows.hasValue() || this.rows.value().num !== sel.page) return null;
     return this.rows.value().rows.find((r) => r.idx === sel.row)?.values ?? null;
   });
-  protected editorValues = computed<Draft>(() => ({ ...(this.selectedRowValues() ?? {}), ...this.draft() }));
+  protected readonly editorValues = computed<Draft>(() => ({ ...(this.selectedRowValues() ?? {}), ...this.draft() }));
 
-  protected viewRows = computed<PageRows | null>(() => {
+  protected readonly viewRows = computed<PageRows | null>(() => {
     if (!this.rows.hasValue()) return null;
     const r = this.rows.value(), sel = this.selected(), draft = this.draft();
     if (!sel || sel.page !== r.num || !Object.keys(draft).length) return r;
     return { ...r, rows: r.rows.map((row) => (row.idx === sel.row ? { ...row, values: { ...row.values, ...draft } } : row)) };
   });
 
-  protected flaggedCells = computed<CellRef[]>(() =>
+  protected readonly flaggedCells = computed<CellRef[]>(() =>
     this.records().filter((r) => r.page === this.page()).flatMap((r) => r.flags.map((f) => ({ row: f.row, column: f.column }))),
   );
 
@@ -289,13 +293,13 @@ export class ReviewPage {
   }
 
   /** Run a write call with the busy flag, then refresh the doc + queue. */
-  private run<T>(call: Observable<T>, done: (res: T) => void = () => {}): void {
+  private run<T>(call: Observable<T>, done?: (res: T) => void): void {
     this.busy.set(true);
     this.actionError.set(false);
     call.subscribe({
       next: (res) => {
         this.busy.set(false);
-        done(res);
+        done?.(res);
         this.reloadDoc();
         this.queue.reload();
       },

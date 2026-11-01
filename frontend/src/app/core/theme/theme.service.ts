@@ -8,7 +8,7 @@ const STORAGE_KEY = 'docdig.theme';
 @Injectable({ providedIn: 'root' })
 export class Theme {
   readonly mode = signal<ThemeMode>((localStorage.getItem(STORAGE_KEY) as ThemeMode) || 'system');
-  private systemDark = signal(false);
+  private readonly systemDark = signal(false);
   readonly dark = computed(() => (this.mode() === 'system' ? this.systemDark() : this.mode() === 'dark'));
 
   constructor() {

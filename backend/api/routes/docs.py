@@ -72,7 +72,7 @@ async def get_doc_detail(slug: str, session: AsyncSession = Depends(get_session)
     nums = (await session.exec(select(Page.num, Page.page_confidence).where(Page.doc_id == doc.id)
                                .order_by(Page.num))).all()
     open_by_page = dict(
-        (await session.exec(select(Flag.page_num, func.count()).where(Flag.doc_id == doc.id, Flag.resolved == False)  # noqa: E712
+        (await session.exec(select(Flag.page_num, func.count()).where(Flag.doc_id == doc.id, Flag.resolved == False)
                             .group_by(Flag.page_num))).all()
     )
     pages = [PageInfo(num=n, open_flags=open_by_page.get(n, 0), page_confidence=c) for n, c in nums]
@@ -126,7 +126,7 @@ async def resolve_row(slug: str, num: int, idx: int, body: RowUpdate, session: A
     row.corrections = corrections  # reassign: JSON columns don't track in-place changes
 
     flags = (await session.exec(select(Flag).where(Flag.doc_id == doc.id, Flag.page_num == num,
-                                                   Flag.row_idx == idx, Flag.resolved == False))).all()  # noqa: E712
+                                                   Flag.row_idx == idx, Flag.resolved == False))).all()
     for f in flags:
         f.resolved = True
     await session.flush()

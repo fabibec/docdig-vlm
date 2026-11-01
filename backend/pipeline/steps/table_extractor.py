@@ -1,3 +1,4 @@
+from itertools import pairwise
 from pathlib import Path
 from typing import Literal
 
@@ -294,7 +295,7 @@ class TableExtractor(PipelineStep):
             height=y2 - y1,
             skew_angle=round(skew_angle, 3),
             header=(lines[0], lines[1]),
-            row_bounds=list(zip(lines[1:-1], lines[2:])),
+            row_bounds=list(pairwise(lines[1:])),
             col_bounds=[x - x1 for x in valid_col_centers],
         )
         (output_dir / f"{img_path.stem}.geom.json").write_text(

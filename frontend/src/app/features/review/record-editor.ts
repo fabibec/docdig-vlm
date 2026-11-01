@@ -102,18 +102,19 @@ const TONE = {
 
     <form class="grid grid-cols-2 gap-3" (submit)="$event.preventDefault(); save.emit()">
       @for (c of columns; track c) {
-        <label class="flex flex-col gap-1 text-sm" [class.col-span-2]="c === 'additional_remark' || c === 'species'">
-          <span [class]="flagged().has(c) ? 'font-medium text-amber-700 dark:text-amber-400' : 'text-muted-foreground'">
+        <div class="flex flex-col gap-1 text-sm" [class.col-span-2]="c === 'additional_remark' || c === 'species'">
+          <label [for]="'field-' + c"
+                 [class]="flagged().has(c) ? 'font-medium text-amber-700 dark:text-amber-400' : 'text-muted-foreground'">
             {{ 'col.' + c | t }}
-          </span>
+          </label>
           @if (c === 'additional_remark') {
-            <textarea class="input min-h-20" [class.ring-2]="flagged().has(c)" [class.ring-amber-400]="flagged().has(c)"
+            <textarea [id]="'field-' + c" class="input min-h-20" [class.ring-2]="flagged().has(c)" [class.ring-amber-400]="flagged().has(c)"
                       [value]="values()[c] ?? ''" (input)="emit(c, $event)"></textarea>
           } @else {
-            <input class="input" [class.ring-2]="flagged().has(c)" [class.ring-amber-400]="flagged().has(c)"
+            <input [id]="'field-' + c" class="input" [class.ring-2]="flagged().has(c)" [class.ring-amber-400]="flagged().has(c)"
                    [value]="values()[c] ?? ''" (input)="emit(c, $event)" />
           }
-        </label>
+        </div>
       }
       @if (error()) { <p class="col-span-2 text-sm text-red-600">{{ 'review.saveFailed' | t }}</p> }
       <div class="col-span-2 mt-1 flex gap-2">
@@ -126,14 +127,14 @@ const TONE = {
 export class RecordEditor {
   private i18n = inject(I18n);
 
-  record = input.required<ReviewRecord>();
-  values = input.required<Partial<Record<ColumnKey, string>>>();
-  busy = input(false);
-  error = input(false);
+  readonly record = input.required<ReviewRecord>();
+  readonly values = input.required<Partial<Record<ColumnKey, string>>>();
+  readonly busy = input(false);
+  readonly error = input(false);
   /** Column preselected for a new note (e.g. the clicked cell). */
-  noteColumn = model<ColumnKey | null>(null);
+  readonly noteColumn = model<ColumnKey | null>(null);
   /** Open the note form (set by the parent when an unflagged row is picked). */
-  noteOpen = model(false);
+  readonly noteOpen = model(false);
 
   changed = output<{ column: ColumnKey; value: string }>();
   save = output<void>();
@@ -142,8 +143,8 @@ export class RecordEditor {
   deleteNote = output<number>();
 
   protected columns = COLUMNS;
-  protected noteText = signal('');
-  protected flagged = computed(() => new Set(this.record().flags.map((f) => f.column).filter((c) => c !== null)));
+  protected readonly noteText = signal('');
+  protected readonly flagged = computed(() => new Set(this.record().flags.map((f) => f.column).filter((c) => c !== null)));
 
   protected text(f: FlagOut): string {
     return flagText(this.i18n, f);

@@ -86,15 +86,15 @@ export class BatchCard {
   private i18n = inject(I18n);
   protected rt = inject(Realtime);
 
-  batch = input.required<BatchOut>();
+  readonly batch = input.required<BatchOut>();
   protected size = PAGE_SIZE;
   protected statuses = STATUSES;
-  protected expanded = signal(false);
-  protected page = signal(1);
+  protected readonly expanded = signal(false);
+  protected readonly page = signal(1);
   protected docs = httpResource<Paginated<DocOut>>(() =>
     this.expanded() ? this.api.batchDocsUrl(this.batch().slug, this.page(), PAGE_SIZE) : undefined,
   );
-  protected created = computed(() =>
+  protected readonly created = computed(() =>
     new Intl.DateTimeFormat(this.i18n.locale(), { dateStyle: 'medium', timeStyle: 'short' })
       .format(new Date(this.batch().created_at)),
   );

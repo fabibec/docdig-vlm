@@ -52,9 +52,9 @@ import { StatusBadge } from '../../shared/ui/status-badge';
 export class DocumentPage {
   private api = inject(Api);
 
-  docSlug = input.required<string>();
+  readonly docSlug = input.required<string>();
   protected detail = httpResource<DocDetail>(() => this.api.docUrl(this.docSlug()));
-  protected page = linkedSignal(() => (this.docSlug() ? 1 : 1));
-  protected step = signal<ViewerStep>('processed');
+  protected readonly page = linkedSignal(() => (this.docSlug() ? 1 : 1));
+  protected readonly step = signal<ViewerStep>('processed');
   protected rows = httpResource<PageRows>(() => this.api.rowsUrl(this.docSlug(), this.page()));
 }

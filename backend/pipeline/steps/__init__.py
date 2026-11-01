@@ -1,6 +1,6 @@
 from .img_extractor import ImgExtractor
-from .table_extractor import TableExtractor
 from .llm_extractor import LlmExtractor
+from .table_extractor import TableExtractor
 
 
 def __getattr__(name: str):

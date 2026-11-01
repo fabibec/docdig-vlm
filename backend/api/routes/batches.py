@@ -11,10 +11,10 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from backend.api.auth import User, current_user
 from backend.api.config import settings
 from backend.api.db import get_session
+from backend.api.hub import hub
 from backend.api.models import Batch, Doc
 from backend.api.processing import processor
 from backend.api.queries import batch_outs, doc_out, review_stats
-from backend.api.hub import hub
 from backend.api.schemas import BatchEvent, BatchOut, DocOut, DuplicateFiles, Paginated, ReviewEvent
 from backend.api.storage import FileTooLarge, slugify, store
 

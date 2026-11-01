@@ -38,3 +38,33 @@ ocr = [
 [tool.uv]
 # Plain `uv sync` locally installs everything (as before); Docker uses `--no-default-groups`.
 default-groups = ["dev", "ocr"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+extend-exclude = ["frontend", "data", "models", "backend/pipeline/backup"]  # backup/ = old OCR code, kept for reference
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort
+    "B",        # bugbear
+    "UP",       # pyupgrade
+    "SIM",      # simplify
+    "C4",       # comprehensions
+    "ASYNC",    # blocking calls in async code
+    "RUF",      # ruff-specific
+]
+ignore = [
+    "B008",     # FastAPI: Depends()/Query() in argument defaults is the intended pattern
+    "C408",     # dict(a=1) is fine for kwargs-like dicts
+    "RUF001", "RUF002", "RUF003",  # typographic quotes/dashes in UI strings and comments are intentional
+]
+
+[tool.ruff.lint.per-file-ignores]
+# SQLAlchemy needs `== False` inside where() clauses
+"backend/api/**" = ["E712"]
+
+[tool.ruff.format]
+quote-style = "double"

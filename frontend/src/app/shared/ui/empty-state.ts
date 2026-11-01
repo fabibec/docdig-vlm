@@ -17,9 +17,9 @@ import { lucideCircleCheck, lucideInbox, lucideTriangleAlert } from '@ng-icons/l
   `,
 })
 export class EmptyState {
-  icon = input<'lucideCircleCheck' | 'lucideInbox' | 'lucideTriangleAlert'>('lucideInbox');
-  tone = input('text-muted-foreground');
-  size = input('3rem');
-  title = input.required<string>();
-  text = input<string>('');
+  readonly icon = input<'lucideCircleCheck' | 'lucideInbox' | 'lucideTriangleAlert'>('lucideInbox');
+  readonly tone = input('text-muted-foreground');
+  readonly size = input('3rem');
+  readonly title = input.required<string>();
+  readonly text = input<string>('');
 }

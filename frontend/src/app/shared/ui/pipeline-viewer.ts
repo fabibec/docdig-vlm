@@ -21,8 +21,9 @@ export interface CellRef { row: number; column: ColumnKey | null }
   imports: [TPipe, NgIcon],
   providers: [provideIcons({ lucideCopy, lucideCheck })],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: { '[class]': "fill() ? 'flex flex-col xl:min-h-0 xl:flex-1' : 'block'" },
   template: `
-    <div class="mb-3 flex flex-wrap items-center gap-2">
+    <div class="mb-3 flex shrink-0 flex-wrap items-center gap-2">
       <div class="inline-flex rounded-full border border-border bg-muted p-0.5">
         @for (s of steps; track s.id) {
           <button class="rounded-full px-3 py-1.5 text-sm transition-colors"
@@ -44,12 +45,14 @@ export interface CellRef { row: number; column: ColumnKey | null }
 
     @switch (step()) {
       @case ('raw') {
-        <div class="viewer-frame">
+        <div class="viewer-frame" [class]="fillCls()">
           <img class="w-full" [src]="api.artifactUrl(slug(), 'raw', page())" alt="" loading="lazy" />
         </div>
       }
       @case ('cropped') {
-        <div #frame class="viewer-frame">
+        <div #frame class="viewer-frame" [class]="fillCls()">
+          <!-- Pointer shortcut: maps the click position to a cell. Keyboard users use the records list / editor. -->
+          <!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -->
           <div class="relative" [class.cursor-crosshair]="interactive()" (click)="imageClick($event)">
             <img class="block w-full" [src]="api.artifactUrl(slug(), 'cropped', page())" alt="" />
             @if (rows(); as r) {
@@ -69,7 +72,7 @@ export interface CellRef { row: number; column: ColumnKey | null }
         </div>
       }
       @case ('processed') {
-        <div class="mb-2 flex items-center gap-1">
+        <div class="mb-2 flex shrink-0 items-center gap-1">
           @for (m of modes; track m) {
             <button class="rounded-md px-3 py-1 text-sm"
                     [class]="mode() === m ? 'bg-muted font-semibold' : 'text-muted-foreground'"
@@ -84,7 +87,7 @@ export interface CellRef { row: number; column: ColumnKey | null }
         </div>
         @if (rows(); as r) {
           @if (mode() === 'rendered') {
-            <div class="max-h-[70vh] overflow-auto rounded-md border border-border">
+            <div class="max-h-[70vh] overflow-auto rounded-md border border-border" [class]="fillCls()">
               <table class="w-full min-w-[640px] text-sm">
                 <thead class="sticky top-0 bg-muted">
                   <tr>
@@ -112,7 +115,7 @@ export interface CellRef { row: number; column: ColumnKey | null }
               </table>
             </div>
           } @else {
-            <pre class="max-h-[70vh] overflow-auto rounded-md border border-border bg-muted p-3 text-xs">{{ markdown() }}</pre>
+            <pre class="max-h-[70vh] overflow-auto rounded-md border border-border bg-muted p-3 text-xs" [class]="fillCls()">{{ markdown() }}</pre>
           }
         } @else {
           <p class="text-sm text-muted-foreground">{{ 'viewer.notReady' | t }}</p>
@@ -125,15 +128,17 @@ export class PipelineViewer {
   protected api = inject(Api);
   private i18n = inject(I18n);
 
-  slug = input.required<string>();
-  pages = input.required<PageInfo[]>();
-  rows = input<PageRows | null>(null);
-  selectedRow = input<number | null>(null);
-  flagged = input<CellRef[]>([]);
-  page = model.required<number>();
-  step = model<ViewerStep>('raw');
+  readonly slug = input.required<string>();
+  readonly pages = input.required<PageInfo[]>();
+  readonly rows = input<PageRows | null>(null);
+  readonly selectedRow = input<number | null>(null);
+  readonly flagged = input<CellRef[]>([]);
+  readonly page = model.required<number>();
+  readonly step = model<ViewerStep>('raw');
   /** Rows/cells can be clicked (review page). Emits for every row, flagged or not. */
-  interactive = input(false);
+  readonly interactive = input(false);
+  /** xl: grow to the parent's height (parent must be a flex column) instead of capping frames at ~75vh. */
+  readonly fill = input(false);
   cellClick = output<CellRef>();
 
   protected steps = [
@@ -143,11 +148,12 @@ export class PipelineViewer {
   ] as const;
   protected modes = ['rendered', 'markdown'] as const;
   protected columns = COLUMNS;
-  protected mode = signal<'rendered' | 'markdown'>('rendered');
-  protected copied = signal(false);
-  private frame = viewChild<ElementRef<HTMLElement>>('frame');
+  protected readonly mode = signal<'rendered' | 'markdown'>('rendered');
+  protected readonly copied = signal(false);
+  protected readonly fillCls = computed(() => (this.fill() ? 'xl:max-h-none xl:min-h-0 xl:flex-1' : ''));
+  private readonly frame = viewChild<ElementRef<HTMLElement>>('frame');
 
-  protected markdown = computed(() => {
+  protected readonly markdown = computed(() => {
     const r = this.rows();
     if (!r) return '';
     const labels = Object.fromEntries(COLUMNS.map((c) => [c, this.i18n.t(`col.${c}`)])) as Record<ColumnKey, string>;
@@ -158,7 +164,7 @@ export class PipelineViewer {
     return this.rows()?.rows.find((r) => r.idx === idx);
   }
 
-  protected selectedRect = computed(() => {
+  protected readonly selectedRect = computed(() => {
     const r = this.rows(), sel = this.selectedRow();
     const row = sel === null ? undefined : this.rowBox(sel);
     if (!r || !row) return null;
@@ -166,7 +172,7 @@ export class PipelineViewer {
     return { x: x0, y: row.y0, w: x1 - x0, h: row.y1 - row.y0 };
   });
 
-  protected flagRects = computed(() => {
+  protected readonly flagRects = computed(() => {
     const r = this.rows();
     if (!r) return [];
     return this.flagged().flatMap((f) => {

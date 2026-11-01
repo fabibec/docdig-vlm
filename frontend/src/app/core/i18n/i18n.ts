@@ -21,7 +21,7 @@ function initialLang(): Lang {
 @Injectable({ providedIn: 'root' })
 export class I18n {
   readonly lang = signal<Lang>(initialLang());
-  private dict = computed(() => DICTS[this.lang()]);
+  private readonly dict = computed(() => DICTS[this.lang()]);
   /** Locale for Intl/date formatting. */
   readonly locale = computed(() => ({ de: 'de-CH', fr: 'fr-CH', en: 'en-GB' })[this.lang()]);
 

@@ -26,10 +26,9 @@ class Hub:
     async def broadcast(self, *events: BaseModel):
         for event in events:
             data = event.model_dump_json()
-            results = await asyncio.gather(
-                *(ws.send_text(data) for ws in list(self.clients)), return_exceptions=True
-            )
-            for ws, res in zip(list(self.clients), results):
+            clients = list(self.clients)  # one snapshot, so results line up with sockets
+            results = await asyncio.gather(*(ws.send_text(data) for ws in clients), return_exceptions=True)
+            for ws, res in zip(clients, results, strict=True):
                 if isinstance(res, Exception):
                     self.clients.discard(ws)
 

@@ -41,6 +41,13 @@ cd frontend && npm start                                        # SPA on :4200, 
 
 Production-like without Docker: `cd frontend && npm run build`, then run granian. The app serves `frontend/dist/browser`.
 
+## Lint
+
+```bash
+uv run ruff check backend            # config in pyproject.toml ([tool.ruff]); --fix applies safe fixes
+cd frontend && npm run lint          # ESLint: typescript-eslint + angular-eslint (eslint.config.mjs); lint:fix
+```
+
 ## Docker
 
 ```bash

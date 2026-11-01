@@ -51,8 +51,8 @@ const PAGE_SIZE = 10;
 export class BatchesPage {
   private api = inject(Api);
   protected size = PAGE_SIZE;
-  protected page = signal(1);
-  protected dialog = signal(false);
+  protected readonly page = signal(1);
+  protected readonly dialog = signal(false);
   protected batches = httpResource<Paginated<BatchOut>>(() => this.api.batchesUrl(this.page(), PAGE_SIZE));
 
   constructor() {

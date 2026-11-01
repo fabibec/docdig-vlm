@@ -18,8 +18,10 @@ const PREVIEW_PAGE = 10;
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { '(document:keydown.escape)': 'cancel()' },
   template: `
-    <div class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" (click)="cancel()">
-      <div class="card w-full max-w-lg p-5 shadow-xl" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
+    <div class="fixed inset-0 z-50 grid place-items-center p-4">
+      <button type="button" class="absolute inset-0 cursor-default bg-black/40" tabindex="-1"
+              [attr.aria-label]="'upload.cancel' | t" (click)="cancel()"></button>
+      <div class="card relative w-full max-w-lg p-5 shadow-xl" role="dialog" aria-modal="true">
         <div class="mb-4 flex items-center">
           <h2 class="text-lg font-semibold">{{ 'upload.title' | t }}</h2>
           <button class="btn-icon ml-auto" (click)="cancel()" [attr.aria-label]="'upload.cancel' | t"><ng-icon name="lucideX" /></button>
@@ -86,14 +88,14 @@ export class UploadDialog {
   created = output<void>();
 
   protected pageSize = PREVIEW_PAGE;
-  protected name = signal(this.i18n.t('upload.defaultName', { date: new Date().toLocaleDateString(this.i18n.locale()) }));
-  protected files = signal<File[]>([]);
-  protected page = signal(1);
-  protected over = signal(false);
-  protected skippedDupes = signal<string[]>([]);
-  protected progress = signal<number | null>(null);
-  protected error = signal('');
-  protected visible = computed(() => this.files().slice((this.page() - 1) * PREVIEW_PAGE, this.page() * PREVIEW_PAGE));
+  protected readonly name = signal(this.i18n.t('upload.defaultName', { date: new Date().toLocaleDateString(this.i18n.locale()) }));
+  protected readonly files = signal<File[]>([]);
+  protected readonly page = signal(1);
+  protected readonly over = signal(false);
+  protected readonly skippedDupes = signal<string[]>([]);
+  protected readonly progress = signal<number | null>(null);
+  protected readonly error = signal('');
+  protected readonly visible = computed(() => this.files().slice((this.page() - 1) * PREVIEW_PAGE, this.page() * PREVIEW_PAGE));
 
   protected add(list: FileList | null | undefined): void {
     if (!list) return;

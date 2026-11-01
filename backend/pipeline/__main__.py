@@ -16,7 +16,7 @@ from backend.pipeline import STEP_NAMES, PipelineTask, build_pipeline
 
 def _steps(value: str) -> list[str]:
     steps = [s.strip() for s in value.split(",") if s.strip()]
-    allowed = STEP_NAMES + ["ocr"]
+    allowed = [*STEP_NAMES, "ocr"]
     if bad := [s for s in steps if s not in allowed]:
         raise argparse.ArgumentTypeError(f"unknown step(s) {bad}, choose from {allowed}")
     return steps
