@@ -6,7 +6,7 @@
 
 # Script environment variables
 env:
-  DOCKER_IMAGE_NAME: docdig-application
+  DOCKER_IMAGE_NAME: ${{ github.repository_owner }}/docdig-application
   DOCKER_REGISTRY: ghcr.io
 
 name: Build and Push Docker Image
