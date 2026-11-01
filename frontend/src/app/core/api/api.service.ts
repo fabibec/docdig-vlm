@@ -3,7 +3,8 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import {
-  ArtifactState, BatchOut, DocDetail, DocOut, FlagOut, PageRows, Paginated, ResolveOut, ReviewQueue, RowUpdate,
+  ArtifactState, BatchOut, DocDetail, DocOut, FlagChangeOut, FlagCreate, FlagOut, PageRows, Paginated, ResolveOut,
+  ReviewQueue, RowUpdate,
 } from './api.types';
 
 const API = '/api';
@@ -41,6 +42,20 @@ export class Api {
 
   resolveRow(slug: string, page: number, idx: number, body: RowUpdate) {
     return this.http.post<ResolveOut>(`${API}/docs/${slug}/page/${page}/rows/${idx}/resolve`, body);
+  }
+
+  createFlag(slug: string, body: FlagCreate) {
+    return this.http.post<FlagChangeOut>(`${API}/docs/${slug}/flags`, body);
+  }
+
+  /** Only user annotations can be deleted. */
+  deleteFlag(slug: string, id: number) {
+    return this.http.delete<FlagChangeOut>(`${API}/docs/${slug}/flags/${id}`);
+  }
+
+  /** Undo a resolve. */
+  reopenFlags(slug: string, ids: number[]) {
+    return this.http.post<FlagChangeOut>(`${API}/docs/${slug}/flags/reopen`, { ids });
   }
 
   createBatch(name: string, files: File[]): Observable<HttpEvent<BatchOut>> {

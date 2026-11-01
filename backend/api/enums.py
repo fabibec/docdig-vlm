@@ -47,8 +47,9 @@ COLUMN_GRID_SPAN: dict[ColumnKey, tuple[int, int]] = {
 
 
 class FlagSource(StrEnum):
-    llm = "llm"
-    rule = "rule"
+    llm = "llm"  # LLM uncertainty
+    rule = "rule"  # plausibility rule
+    user = "user"  # annotation added by a reviewer (deletable)
 
 
 class Severity(StrEnum):

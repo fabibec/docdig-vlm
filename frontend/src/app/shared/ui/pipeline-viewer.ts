@@ -50,7 +50,7 @@ export interface CellRef { row: number; column: ColumnKey | null }
       }
       @case ('cropped') {
         <div #frame class="viewer-frame">
-          <div class="relative">
+          <div class="relative" [class.cursor-crosshair]="interactive()" (click)="imageClick($event)">
             <img class="block w-full" [src]="api.artifactUrl(slug(), 'cropped', page())" alt="" />
             @if (rows(); as r) {
               <svg class="pointer-events-none absolute inset-0 h-full w-full" [attr.viewBox]="'0 0 ' + r.width + ' ' + r.height"
@@ -95,14 +95,15 @@ export interface CellRef { row: number; column: ColumnKey | null }
                 <tbody>
                   @for (row of r.rows; track row.idx) {
                     <tr class="border-t border-border" [class.bg-sky-50]="row.idx === selectedRow()"
-                        [class.dark:bg-sky-950]="row.idx === selectedRow()">
-                      <td class="p-2 text-right text-xs text-muted-foreground">{{ row.idx }}</td>
+                        [class.dark:bg-sky-950]="row.idx === selectedRow()" [class.cursor-pointer]="interactive()">
+                      <td class="p-2 text-right text-xs text-muted-foreground" (click)="emitCell(row.idx, null)">{{ row.idx }}</td>
                       @for (c of columns; track c) {
                         @if (isFlagged(row.idx, c)) {
                           <td class="cursor-pointer bg-amber-100 p-2 shadow-[inset_0_-2px_#b9770e] dark:bg-amber-900/40"
-                              (click)="cellClick.emit(row.idx)">{{ row.values[c] }}</td>
+                              (click)="emitCell(row.idx, c)">{{ row.values[c] }}</td>
                         } @else {
-                          <td class="p-2" [class.font-medium]="row.corrected.includes(c)">{{ row.values[c] }}</td>
+                          <td class="p-2" [class.font-medium]="row.corrected.includes(c)"
+                              (click)="emitCell(row.idx, c)">{{ row.values[c] }}</td>
                         }
                       }
                     </tr>
@@ -131,7 +132,9 @@ export class PipelineViewer {
   flagged = input<CellRef[]>([]);
   page = model.required<number>();
   step = model<ViewerStep>('raw');
-  cellClick = output<number>();
+  /** Rows/cells can be clicked (review page). Emits for every row, flagged or not. */
+  interactive = input(false);
+  cellClick = output<CellRef>();
 
   protected steps = [
     { id: 'raw', label: 'viewer.original' },
@@ -190,6 +193,21 @@ export class PipelineViewer {
 
   protected isFlagged(row: number, column: ColumnKey): boolean {
     return this.flagged().some((f) => f.row === row && f.column === column);
+  }
+
+  protected emitCell(row: number, column: ColumnKey | null): void {
+    if (this.interactive()) this.cellClick.emit({ row, column });
+  }
+
+  /** Step 2: map the click position on the cropped image to (row, column) via the page geometry. */
+  protected imageClick(ev: MouseEvent): void {
+    const r = this.rows(), el = ev.currentTarget as HTMLElement;
+    if (!this.interactive() || !r || !el.clientWidth) return;
+    const x = (ev.offsetX / el.clientWidth) * r.width, y = (ev.offsetY / el.clientHeight) * r.height;
+    const row = r.rows.find((x0) => y >= x0.y0 && y < x0.y1);
+    if (!row) return;
+    const column = COLUMNS.find((c) => x >= r.column_x[c][0] && x < r.column_x[c][1]) ?? null;
+    this.cellClick.emit({ row: row.idx, column });
   }
 
   protected async copy(): Promise<void> {

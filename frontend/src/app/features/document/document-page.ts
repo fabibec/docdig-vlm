@@ -30,6 +30,9 @@ import { StatusBadge } from '../../shared/ui/status-badge';
           <span class="text-sm text-muted-foreground">· {{ 'doc.pages' | t: { n: d.pages.length } }}</span>
           <span class="flex-1"></span>
           <app-status-badge [status]="d.status" />
+          @if (d.status === 'review' || d.status === 'done') {
+            <a class="btn-outline" [routerLink]="['/review/file', d.slug]">{{ 'doc.annotate' | t }}</a>
+          }
         </div>
 
         <section class="card p-4">

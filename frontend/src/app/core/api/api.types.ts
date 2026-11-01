@@ -1,12 +1,12 @@
-// Mirrors backend/api/schemas.py + enums.py (JSON field names). Regenerate the OpenAPI
-// version with `npm run gen:api` (backend running) when the backend schema changes.
+// Mirrors backend/api/schemas.py + enums.py (JSON field names). Keep in sync by hand;
+// the backend's OpenAPI (/openapi.json) is the reference.
 
 export type DocStatus = 'queued' | 'processing' | 'review' | 'done' | 'error';
 export type ArtifactState = 'raw' | 'cropped' | 'processed';
 export type ColumnKey =
   | 'ring_no' | 'species' | 'sex' | 'age' | 'date' | 'time'
   | 'wing_length_mm' | 'weight_g' | 'additional_remark';
-export type FlagSource = 'llm' | 'rule';
+export type FlagSource = 'llm' | 'rule' | 'user';
 export type Severity = 'error' | 'warning';
 
 export const COLUMNS: ColumnKey[] = [
@@ -50,6 +50,9 @@ export interface FlagOut {
 
 export interface RowUpdate { values: Partial<Record<ColumnKey, string>> }
 export interface ResolveOut { doc: DocOut; resolved_flag_ids: number[] }
+/** Reviewer annotation, stored as a flag with source=user. column null = whole row. */
+export interface FlagCreate { page: number; row: number; column: ColumnKey | null; message: string; severity?: Severity }
+export interface FlagChangeOut { doc: DocOut; flags: FlagOut[] }
 export interface DuplicateFiles { detail: 'duplicate_files'; filenames: string[] }
 
 export interface ReviewItem { slug: string; batch_slug: string; filename: string; open_flags: number }

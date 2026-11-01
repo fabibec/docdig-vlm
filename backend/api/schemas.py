@@ -1,7 +1,7 @@
 """Request/response models of the HTTP API and the WebSocket events.
 
-The frontend types (frontend/src/app/core/api/api.types.ts) are generated from these
-via OpenAPI: `npm run gen:api` (backend must be running).
+The frontend mirrors these by hand in frontend/src/app/core/api/api.types.ts
+(reference: /openapi.json). Overview tables: docs/backend.md.
 """
 
 from datetime import datetime
@@ -104,6 +104,27 @@ class RowUpdate(BaseModel):
 class ResolveOut(BaseModel):
     doc: DocOut
     resolved_flag_ids: list[int]
+
+
+class FlagCreate(BaseModel):
+    """A reviewer annotation (stored as a flag with source=user)."""
+
+    page: int
+    row: int = Field(description="1-based data row")
+    column: ColumnKey | None = Field(None, description="null = whole row")
+    message: str = Field(min_length=1, max_length=2000)
+    severity: Severity = Severity.warning
+
+
+class FlagIds(BaseModel):
+    ids: list[int] = Field(min_length=1)
+
+
+class FlagChangeOut(BaseModel):
+    """Result of creating / deleting / reopening flags: the updated doc and the affected flags."""
+
+    doc: DocOut
+    flags: list[FlagOut] = Field(description="created or reopened flags; empty on delete")
 
 
 class DuplicateFiles(BaseModel):

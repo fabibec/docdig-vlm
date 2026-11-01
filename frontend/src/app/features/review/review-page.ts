@@ -4,7 +4,9 @@ import {
 import { httpResource } from '@angular/common/http';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
-import { debounceTime } from 'rxjs';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { lucideCircleCheck } from '@ng-icons/lucide';
+import { Observable, concatMap, debounceTime, of } from 'rxjs';
 
 import { Api } from '../../core/api/api.service';
 import { ColumnKey, DocDetail, FlagOut, PageRows, ReviewQueue } from '../../core/api/api.types';
@@ -12,17 +14,24 @@ import { I18n, TPipe } from '../../core/i18n/i18n';
 import { Realtime } from '../../core/realtime/realtime.service';
 import { EmptyState } from '../../shared/ui/empty-state';
 import { CellRef, PipelineViewer, ViewerStep } from '../../shared/ui/pipeline-viewer';
-import { flagText, RecordEditor, ReviewRecord } from './record-editor';
+import { flagText, NoteDraft, RecordEditor, ReviewRecord } from './record-editor';
 
 type Draft = Partial<Record<ColumnKey, string>>;
+
+/** What the last "Save & next" changed, so it can be undone. */
+interface LastSave { slug: string; page: number; row: number; before: Draft; flagIds: number[] }
+
+const UNDO_MS = 10_000;
 
 /**
  * Review queue for `/review` (all), `/review/batch/:batchSlug` and `/review/file/:docSlug`.
  * Files come oldest first from the backend; within a file the flagged records are worked through in order.
+ * Any other row can be picked in the viewer to correct it or attach a reviewer note (a flag with source=user).
  */
 @Component({
   selector: 'app-review-page',
-  imports: [TPipe, RouterLink, EmptyState, PipelineViewer, RecordEditor],
+  imports: [TPipe, RouterLink, NgIcon, EmptyState, PipelineViewer, RecordEditor],
+  providers: [provideIcons({ lucideCircleCheck })],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (queue.hasValue()) {
@@ -67,31 +76,40 @@ type Draft = Partial<Record<ColumnKey, string>>;
                     <button class="mb-1 w-full rounded-md border px-2 py-1.5 text-left text-sm transition-colors"
                             [class]="r.key === selected()?.key ? 'border-primary bg-primary/10' : 'border-transparent hover:bg-muted'"
                             (click)="select(r)">
-                      <div class="flex gap-2">
+                      <div class="flex items-center gap-2">
                         <span class="text-muted-foreground">#{{ r.row }}</span>
                         <span class="truncate font-medium">{{ species(r) }}</span>
-                        @if (r.flags.length > 1) {
-                          <span class="ml-auto rounded-full bg-amber-100 px-1.5 text-xs text-amber-800 dark:bg-amber-900/50 dark:text-amber-300">
-                            {{ r.flags.length }}
-                          </span>
-                        }
+                        <span class="ml-auto flex shrink-0 items-center gap-1">
+                          @if (hasNote(r)) { <span class="size-2 rounded-full bg-sky-500" [attr.title]="'source.user' | t"></span> }
+                          @if (r.flags.length > 1) {
+                            <span class="rounded-full bg-amber-100 px-1.5 text-xs text-amber-800 dark:bg-amber-900/50 dark:text-amber-300">
+                              {{ r.flags.length }}
+                            </span>
+                          }
+                        </span>
                       </div>
                       <p class="truncate text-xs text-muted-foreground">{{ summary(r) }}</p>
                     </button>
                   }
                 } @empty {
-                  <p class="text-sm text-muted-foreground">{{ 'review.noRecords' | t }}</p>
+                  <div class="flex flex-col items-center gap-2 py-6 text-center">
+                    <ng-icon name="lucideCircleCheck" size="2rem" class="text-green-600" />
+                    <p class="text-sm font-medium">{{ 'review.doneTitle' | t }}</p>
+                  </div>
                 }
+                <p class="mt-2 text-xs text-muted-foreground">{{ 'review.clickHint' | t }}</p>
               </div>
             </section>
 
             <!-- editor -->
             <section class="card p-4">
               @if (selected(); as rec) {
-                <app-record-editor [record]="rec" [values]="editorValues()" [saving]="saving()" [error]="saveError()"
-                                   (changed)="edit($event.column, $event.value)" (save)="save()" (skip)="skip()" />
+                <app-record-editor [record]="rec" [values]="editorValues()" [busy]="busy()" [error]="saveError()"
+                                   [(noteColumn)]="noteColumn" [(noteOpen)]="noteOpen"
+                                   (changed)="edit($event.column, $event.value)" (save)="save()" (skip)="skip()"
+                                   (addNote)="addNote(rec, $event)" (deleteNote)="deleteNote($event)" />
               } @else {
-                <p class="text-sm text-muted-foreground">{{ 'review.selectRecord' | t }}</p>
+                <p class="text-sm text-muted-foreground">{{ 'review.clickHint' | t }}</p>
               }
             </section>
           </div>
@@ -99,10 +117,10 @@ type Draft = Partial<Record<ColumnKey, string>>;
           <!-- viewer -->
           <section class="card min-w-0 p-4">
             @if (detail.hasValue()) {
-              <app-pipeline-viewer [slug]="slug()!" [pages]="detail.value().pages" [rows]="viewRows()"
+              <app-pipeline-viewer [slug]="slug()!" [pages]="detail.value().pages" [rows]="viewRows()" [interactive]="true"
                                    [selectedRow]="selected()?.page === page() ? selected()!.row : null"
                                    [flagged]="flaggedCells()" [(page)]="page" [(step)]="step"
-                                   (cellClick)="selectRow($event)" />
+                                   (cellClick)="pick($event)" />
             }
           </section>
         </div>
@@ -113,6 +131,17 @@ type Draft = Partial<Record<ColumnKey, string>>;
       </app-empty-state>
     } @else {
       <p class="text-sm text-muted-foreground">{{ 'common.loading' | t }}</p>
+    }
+
+    <!-- undo bar -->
+    @if (lastSave(); as ls) {
+      <div class="fixed bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-4 rounded-lg bg-foreground px-4 py-2 text-sm text-background shadow-lg">
+        {{ 'review.saved' | t: { n: ls.row } }}
+        <button class="font-semibold underline underline-offset-2" [disabled]="busy()" (click)="undo()">{{ 'review.undo' | t }}</button>
+      </div>
+    }
+    @if (actionError()) {
+      <div class="fixed bottom-4 right-4 z-40 rounded-lg bg-destructive px-4 py-2 text-sm text-white shadow-lg">{{ 'review.actionFailed' | t }}</div>
     }
   `,
 })
@@ -126,9 +155,10 @@ export class ReviewPage {
 
   protected queue = httpResource<ReviewQueue>(() => this.api.reviewUrl({ batch: this.batchSlug(), doc: this.docSlug() }));
 
-  /** File picked in the selector; falls back to the oldest file in the queue. */
+  /** File picked in the selector; falls back to the oldest file in the queue. A single-file route always shows its file. */
   protected chosen = signal<string | null>(null);
   protected slug = computed(() => {
+    if (this.docSlug()) return this.docSlug()!;
     if (!this.queue.hasValue()) return null;
     const docs = this.queue.value().docs;
     return docs.find((d) => d.slug === this.chosen())?.slug ?? docs[0]?.slug ?? null;
@@ -156,7 +186,12 @@ export class ReviewPage {
   });
 
   private selectedKey = signal<string | null>(null);
-  protected selected = computed(() => this.records().find((r) => r.key === this.selectedKey()) ?? null);
+  /** Row picked in the viewer that has no open flags. */
+  private picked = signal<ReviewRecord | null>(null);
+  protected selected = computed(() => {
+    const key = this.selectedKey();
+    return this.records().find((r) => r.key === key) ?? (this.picked()?.key === key ? this.picked() : null);
+  });
 
   protected page = linkedSignal<number>(() => (this.slug() ? 1 : 1));
   protected step = signal<ViewerStep>('cropped');
@@ -164,8 +199,13 @@ export class ReviewPage {
 
   /** Unsaved edits of the selected record; merged into the viewer rows for a live step-3 preview. */
   protected draft = signal<Draft>({});
-  protected saving = signal(false);
+  protected busy = signal(false);
   protected saveError = signal(false);
+  protected actionError = signal(false);
+  protected noteColumn = signal<ColumnKey | null>(null);
+  protected noteOpen = signal(false);
+  protected lastSave = signal<LastSave | null>(null);
+  private undoTimer?: ReturnType<typeof setTimeout>;
 
   private selectedRowValues = computed(() => {
     const sel = this.selected();
@@ -199,25 +239,32 @@ export class ReviewPage {
       .pipe(debounceTime(500), takeUntilDestroyed(inject(DestroyRef)))
       .subscribe((e) => {
         if (e.type === 'review.pending') this.queue.reload();
-        if (e.type === 'doc.status' && e.doc.slug === this.slug() && !this.saving()) {
-          this.detail.reload();
-          this.flags.reload();
-        }
+        if (e.type === 'doc.status' && e.doc.slug === this.slug() && !this.busy()) this.reloadDoc();
       });
+    inject(DestroyRef).onDestroy(() => clearTimeout(this.undoTimer));
   }
 
-  protected select(r: ReviewRecord): void {
+  protected select(r: ReviewRecord, column: ColumnKey | null = null): void {
     this.selectedKey.set(r.key);
     this.draft.set({});
     this.saveError.set(false);
+    this.noteColumn.set(column);
+    this.noteOpen.set(false);
     this.page.set(r.page);
     this.step.set('cropped');
   }
 
-  /** Click on a highlighted cell in the result table. */
-  protected selectRow(row: number): void {
-    const r = this.records().find((x) => x.page === this.page() && x.row === row);
-    if (r) this.select(r);
+  /** Click on any row/cell in the viewer: open its record, or an empty one for unflagged rows. */
+  protected pick(cell: CellRef): void {
+    const page = this.page(), key = `${page}:${cell.row}`;
+    const existing = this.records().find((r) => r.key === key);
+    if (existing) {
+      if (existing.key !== this.selectedKey()) this.select(existing, cell.column);
+      else this.noteColumn.set(cell.column);
+      return;
+    }
+    this.picked.set({ key, page, row: cell.row, flags: [] });
+    this.select(this.picked()!, cell.column);
   }
 
   protected edit(column: ColumnKey, value: string): void {
@@ -235,33 +282,103 @@ export class ReviewPage {
     if (next) this.select(next);
   }
 
+  private reloadDoc(): void {
+    this.flags.reload();
+    this.detail.reload();
+    this.rows.reload();
+  }
+
+  /** Run a write call with the busy flag, then refresh the doc + queue. */
+  private run<T>(call: Observable<T>, done: (res: T) => void = () => {}): void {
+    this.busy.set(true);
+    this.actionError.set(false);
+    call.subscribe({
+      next: (res) => {
+        this.busy.set(false);
+        done(res);
+        this.reloadDoc();
+        this.queue.reload();
+      },
+      error: () => {
+        this.busy.set(false);
+        this.actionError.set(true);
+        setTimeout(() => this.actionError.set(false), 4000);
+      },
+    });
+  }
+
   protected save(): void {
     const cur = this.selected(), slug = this.slug();
-    if (!cur || !slug || this.saving()) return;
+    if (!cur || !slug || this.busy()) return;
     const next = this.nextAfter(cur);
-    this.saving.set(true);
+    const before = { ...(this.selectedRowValues() ?? {}) };
     this.saveError.set(false);
+    this.busy.set(true);
     this.api.resolveRow(slug, cur.page, cur.row, { values: this.draft() }).subscribe({
-      next: () => {
-        this.saving.set(false);
+      next: (res) => {
+        this.busy.set(false);
+        this.offerUndo({ slug, page: cur.page, row: cur.row, before, flagIds: res.resolved_flag_ids });
+        this.picked.set(null);
         if (next) {
           this.select(next);
-          this.flags.reload();
-          this.detail.reload();
-          this.rows.reload();
         } else {
-          // File finished: the queue drops it and slug() moves on to the next file.
+          // File finished: in batch/all scope the queue drops it and slug() moves on to the next file.
           this.selectedKey.set(null);
           this.draft.set({});
           this.chosen.set(null);
         }
+        this.reloadDoc();
         this.queue.reload();
       },
       error: () => {
-        this.saving.set(false);
+        this.busy.set(false);
         this.saveError.set(true);
       },
     });
+  }
+
+  private offerUndo(ls: LastSave): void {
+    clearTimeout(this.undoTimer);
+    this.lastSave.set(ls);
+    this.undoTimer = setTimeout(() => this.lastSave.set(null), UNDO_MS);
+  }
+
+  /** Undo the last save: restore the previous cell values, then reopen the flags it resolved. */
+  protected undo(): void {
+    const ls = this.lastSave();
+    if (!ls) return;
+    clearTimeout(this.undoTimer);
+    this.lastSave.set(null);
+    const call = this.api.resolveRow(ls.slug, ls.page, ls.row, { values: ls.before }).pipe(
+      concatMap((res) => (ls.flagIds.length ? this.api.reopenFlags(ls.slug, ls.flagIds) : of(res))),
+    );
+    this.run(call, () => {
+      if (ls.slug !== this.slug()) this.chosen.set(ls.slug);
+      this.selectedKey.set(`${ls.page}:${ls.row}`);
+      this.picked.set({ key: `${ls.page}:${ls.row}`, page: ls.page, row: ls.row, flags: [] });
+      this.page.set(ls.page);
+      this.draft.set({});
+    });
+  }
+
+  protected addNote(rec: ReviewRecord, note: NoteDraft): void {
+    const slug = this.slug();
+    if (!slug) return;
+    this.run(this.api.createFlag(slug, { page: rec.page, row: rec.row, column: note.column, message: note.message }), () => {
+      this.selectedKey.set(rec.key); // the picked row now becomes a real record (same key)
+    });
+  }
+
+  protected deleteNote(id: number): void {
+    const slug = this.slug(), sel = this.selected();
+    if (!slug) return;
+    // Keep the row selected even if this was its last open flag.
+    if (sel) this.picked.set({ ...sel, flags: [] });
+    this.run(this.api.deleteFlag(slug, id));
+  }
+
+  protected hasNote(r: ReviewRecord): boolean {
+    return r.flags.some((f) => f.source === 'user');
   }
 
   protected species(r: ReviewRecord): string {

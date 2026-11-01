@@ -1,16 +1,27 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, PlainTextResponse
 from sqlalchemy import func
-from sqlmodel import select
+from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from tabulate import tabulate
 
 from backend.api.db import get_session
-from backend.api.enums import COLUMN_GRID_SPAN, COLUMNS, ArtifactState, ColumnKey
+from backend.api.enums import COLUMN_GRID_SPAN, COLUMNS, ArtifactState, ColumnKey, DocStatus, FlagSource
 from backend.api.hub import hub
 from backend.api.models import Doc, Flag, Page, Row
 from backend.api.queries import doc_events, doc_out, get_doc, refresh_doc_flags
-from backend.api.schemas import DocDetail, FlagOut, PageInfo, PageRows, ResolveOut, RowOut, RowUpdate
+from backend.api.schemas import (
+    DocDetail,
+    FlagChangeOut,
+    FlagCreate,
+    FlagIds,
+    FlagOut,
+    PageInfo,
+    PageRows,
+    ResolveOut,
+    RowOut,
+    RowUpdate,
+)
 from backend.api.storage import store
 
 router = APIRouter(prefix="/docs", tags=["docs"])
@@ -125,6 +136,64 @@ async def resolve_row(slug: str, num: int, idx: int, body: RowUpdate, session: A
     await hub.broadcast(*await doc_events(session, doc))
     await store.after_review(doc.rel_dir)
     return ResolveOut(doc=doc_out(doc), resolved_flag_ids=[f.id for f in flags])
+
+
+# ---------- reviewer annotations + undo ----------
+
+REVIEWABLE = (DocStatus.review, DocStatus.done)
+
+
+async def _flags_changed(session: AsyncSession, doc: Doc) -> None:
+    """Recompute doc status/open_flags, commit, notify clients and the store."""
+    await session.flush()
+    await refresh_doc_flags(session, doc)
+    await session.commit()
+    await hub.broadcast(*await doc_events(session, doc))
+    await store.after_review(doc.rel_dir)
+
+
+@router.post("/{slug}/flags", response_model=FlagChangeOut, status_code=201)
+async def create_flag(slug: str, body: FlagCreate, session: AsyncSession = Depends(get_session)):
+    """Add a reviewer annotation (source=user) to any row. A `done` doc goes back to `review`."""
+    doc = await _doc(session, slug)
+    if doc.status not in REVIEWABLE:
+        raise HTTPException(409, "doc is not processed yet")
+    page = await _page(session, doc, body.page)
+    row = page and (await session.exec(select(Row).where(Row.page_id == page.id, Row.idx == body.row))).first()
+    if not row:
+        raise HTTPException(404, "row not found")
+    flag = Flag(doc_id=doc.id, page_num=body.page, row_idx=body.row, column=body.column, source=FlagSource.user,
+                severity=body.severity, message=body.message.strip())
+    session.add(flag)
+    await _flags_changed(session, doc)
+    return FlagChangeOut(doc=doc_out(doc), flags=[_flag_out(flag)])
+
+
+@router.delete("/{slug}/flags/{flag_id}", response_model=FlagChangeOut)
+async def delete_flag(slug: str, flag_id: int, session: AsyncSession = Depends(get_session)):
+    """Remove a reviewer annotation. Machine flags (llm/rule) can only be resolved, not deleted."""
+    doc = await _doc(session, slug)
+    flag = await session.get(Flag, flag_id)
+    if not flag or flag.doc_id != doc.id:
+        raise HTTPException(404, "flag not found")
+    if flag.source is not FlagSource.user:
+        raise HTTPException(409, "only user annotations can be deleted")
+    await session.delete(flag)
+    await _flags_changed(session, doc)
+    return FlagChangeOut(doc=doc_out(doc), flags=[])
+
+
+@router.post("/{slug}/flags/reopen", response_model=FlagChangeOut)
+async def reopen_flags(slug: str, body: FlagIds, session: AsyncSession = Depends(get_session)):
+    """Undo a resolve: mark the given flags open again (e.g. `resolved_flag_ids` of a resolve call)."""
+    doc = await _doc(session, slug)
+    flags = (await session.exec(select(Flag).where(Flag.doc_id == doc.id, col(Flag.id).in_(body.ids)))).all()
+    if len(flags) != len(set(body.ids)):
+        raise HTTPException(404, "flag not found")
+    for f in flags:
+        f.resolved = False
+    await _flags_changed(session, doc)
+    return FlagChangeOut(doc=doc_out(doc), flags=[_flag_out(f) for f in flags])
 
 
 def _markdown(rows: list[Row]) -> str:

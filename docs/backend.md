@@ -53,7 +53,8 @@ flowchart LR
 ### Data rules
 
 - `Row.values` holds the machine output and is never changed. Human edits go to `Row.corrections`. The API always returns the merged values.
-- Resolving is per row: `POST /api/docs/{slug}/page/{num}/rows/{idx}/resolve` stores the changed cells and resolves every open flag of that row.
+- Resolving is per row: `POST /api/docs/{slug}/page/{num}/rows/{idx}/resolve` stores the changed cells and resolves every open flag of that row. A value equal to the machine value removes the correction, so sending a row's previous values restores it exactly (that is how undo works).
+- `Doc.open_flags` and `Doc.status` (`review` ⇄ `done`) are recomputed by `queries.refresh_doc_flags` after every flag change.
 - `processed` artifacts are rendered from the DB, so the markdown includes corrections.
 - `PageRows.column_x` maps each column key to its x-range in the cropped image (`additional_remark` spans the last 3 printed columns). See `COLUMN_GRID_SPAN` in `enums.py`.
 
@@ -61,8 +62,15 @@ flowchart LR
 
 | Source | Created from | Fields |
 |---|---|---|
-| `llm` | every `Uncertainty` with a row number. The printed header (e.g. "Espèce") is mapped to a column key in `flags.HEADER_KEYS`. | `message` = reason, `suggestion` = best guess, `confidence` |
+| `llm` | every `Uncertainty` with a row number. The printed header (e.g. "Espèce") is mapped to a column key in `flags.HEADER_KEYS`. | `message` = reason, `suggestion` = best guess, `confidence`, `params.value` = value read |
 | `rule` | non-empty cells: `not_a_number`, `weight_out_of_range` (2–2000 g), `wing_out_of_range` (20–700 mm), `time_format` (H:MM) | `code` + `params` for the frontend translations, English `message` fallback |
+| `user` | a reviewer note via `POST /docs/{slug}/flags`, on any processed row, optionally tied to one column | `message` = comment, `severity` (default `warning`) |
+
+All three are resolved the same way (per row). Differences:
+- **Delete:** only `user` flags can be deleted (`DELETE`; anything else returns `409`).
+- **Undo:** any resolved flag can be reopened (`POST /docs/{slug}/flags/reopen`).
+- **Done docs:** adding a note to a `done` doc moves it back to `review`.
+- **Reprocessing:** reprocessing a doc replaces all of its flags, notes included.
 
 ### API
 
@@ -74,12 +82,80 @@ All routes are under `/api`. OpenAPI is at `/docs` and `/openapi.json`. The WS e
 | GET | `/batches?page&size` | `Paginated[BatchOut]` |
 | GET | `/batches/{slug}` · `/batches/{slug}/docs?page&size` | `BatchOut` · `Paginated[DocOut]` |
 | GET | `/docs/{slug}` · `/docs/{slug}/flags?open=` | `DocDetail` · `list[FlagOut]` |
-| GET | `/docs/{slug}/page/{num}/rows` | `PageRows` |
-| POST | `/docs/{slug}/page/{num}/rows/{idx}/resolve` | `ResolveOut` |
+| GET | `/docs/{slug}/page/{num}/rows` | `PageRows` · 404 if the page is not processed |
+| POST | `/docs/{slug}/page/{num}/rows/{idx}/resolve` (body `RowUpdate`) | `ResolveOut` |
+| POST | `/docs/{slug}/flags` (body `FlagCreate`) | 201 `FlagChangeOut` · 404 unknown row · 409 doc not processed |
+| DELETE | `/docs/{slug}/flags/{id}` | `FlagChangeOut` · 409 if not a `user` flag |
+| POST | `/docs/{slug}/flags/reopen` (body `FlagIds`) | `FlagChangeOut` · 404 if an id is unknown |
 | GET | `/docs/{slug}/artifacts/{raw\|cropped\|processed}/page/{num}` | JPEG / markdown |
 | GET | `/review?batch=` / `?doc=` | `ReviewQueue` |
 | GET | `/health` | `Health` |
 | WS | `/ws` | `doc.status`, `batch.created`, `batch.updated`, `review.pending` (also sent on connect) |
+
+Every write that changes flags broadcasts `doc.status`, `batch.updated` and `review.pending`.
+
+### Schemas (`schemas.py`)
+
+Enums (`enums.py`):
+
+| Enum | Values |
+|---|---|
+| `DocStatus` | `queued`, `processing`, `review`, `done`, `error` |
+| `ArtifactState` | `raw`, `cropped`, `processed` |
+| `ColumnKey` | `ring_no`, `species`, `sex`, `age`, `date`, `time`, `wing_length_mm`, `weight_g`, `additional_remark` |
+| `FlagSource` | `llm`, `rule`, `user` |
+| `Severity` | `error`, `warning` |
+
+Responses:
+
+| Schema | Fields |
+|---|---|
+| `Paginated[T]` | `items: T[]`, `total`, `page` (1-based), `size` |
+| `StatusCounts` | `queued`, `processing`, `review`, `done`, `error` (doc counts) |
+| `BatchOut` | `slug`, `name`, `created_at`, `num_docs`, `counts: StatusCounts`, `open_flags` |
+| `DocOut` | `slug`, `batch_slug`, `filename`, `status: DocStatus`, `num_pages?`, `open_flags`, `error?`, `updated_at` |
+| `PageInfo` | `num`, `open_flags`, `page_confidence?` |
+| `DocDetail` | `DocOut` + `batch_name`, `pages: PageInfo[]`, `artifact_url` (template with `{state}`, `{num}`) |
+| `RowOut` | `idx` (1-based), `y0`, `y1` (px in the cropped image), `values: {ColumnKey: str}` (effective), `corrected: ColumnKey[]` |
+| `PageRows` | `num`, `width`, `height` (cropped image), `columns: ColumnKey[]`, `column_x: {ColumnKey: [x0, x1]}`, `rows: RowOut[]` |
+| `FlagOut` | `id`, `page`, `row`, `column?`, `source`, `severity`, `code?`, `params: {str: str\|float}`, `message`, `suggestion?`, `confidence?`, `resolved` |
+| `ResolveOut` | `doc: DocOut`, `resolved_flag_ids: int[]` |
+| `FlagChangeOut` | `doc: DocOut`, `flags: FlagOut[]` (created / reopened; empty on delete) |
+| `DuplicateFiles` (409) | `detail: "duplicate_files"`, `filenames: str[]` |
+| `ReviewItem` | `slug`, `batch_slug`, `filename`, `open_flags` |
+| `ReviewQueue` | `scope: all\|batch\|doc`, `files_left`, `flags_left`, `docs: ReviewItem[]` (oldest batch first, then filename) |
+| `Health` | `status: "ok"` |
+
+Requests:
+
+| Schema | Fields |
+|---|---|
+| upload (multipart) | `name: str`, `files: File[]` (PDF) |
+| `RowUpdate` | `values: {ColumnKey: str}`, changed cells only; `{}` = accept the machine values |
+| `FlagCreate` | `page`, `row`, `column?` (null = whole row), `message` (1–2000 chars), `severity` = `warning` |
+| `FlagIds` | `ids: int[]` (at least 1) |
+
+WebSocket events (server → client, discriminated by `type`; JSON schema at `GET /api/ws/schema`):
+
+| `type` | Payload |
+|---|---|
+| `doc.status` | `doc: DocOut`, `progress?: {step: ArtifactState, page, pages}` (only while `processing`) |
+| `batch.created` / `batch.updated` | `batch: BatchOut` |
+| `review.pending` | `files_left`, `flags_left` (global) |
+
+### Database (`models.py`)
+
+SQLite (WAL) at `WEB_DB_PATH`. Tables are created with `create_all`, so adding a column needs a manual migration (or Alembic) on existing DBs. Paths are stored relative to the artifact root.
+
+| Table | Columns |
+|---|---|
+| `Batch` | `id`, `slug` (unique), `name`, `owner?`, `created_at` |
+| `Doc` | `id`, `slug` (unique), `batch_id`, `filename` (unique per batch), `status`, `num_pages?`, `open_flags` (denormalised), `error?`, `created_at`, `updated_at` |
+| `Page` | `id`, `doc_id`, `num` (unique per doc), `width`, `height`, `col_bounds: int[]` (JSON), `page_confidence?` |
+| `Row` | `id`, `page_id`, `idx` (unique per page), `y0`, `y1`, `values` (JSON, machine), `corrections` (JSON, human) |
+| `Flag` | `id`, `doc_id`, `page_num`, `row_idx`, `column?`, `source`, `severity`, `code?`, `params` (JSON), `message`, `suggestion?`, `confidence?`, `resolved` |
+
+`Page`, `Row` and `Flag` cascade on delete with their doc.
 
 ## Configuration
 
