@@ -61,9 +61,7 @@ class Processor:
                 update(Doc).where(col(Doc.status) == DocStatus.processing).values(status=DocStatus.queued)
             )
             await session.commit()
-            queued = (
-                await session.exec(select(Doc.id).where(Doc.status == DocStatus.queued).order_by(Doc.id))
-            ).all()
+            queued = (await session.exec(select(Doc.id).where(Doc.status == DocStatus.queued).order_by(Doc.id))).all()
         self.enqueue(list(queued))
 
     async def stop(self) -> None:
@@ -113,8 +111,14 @@ class Processor:
             n_flags = 0
             for pr in result.pages:
                 g = pr.geometry
-                page = Page(doc_id=doc_id, num=pr.num, width=g.width, height=g.height,
-                            col_bounds=g.col_bounds, page_confidence=pr.table.page_confidence)
+                page = Page(
+                    doc_id=doc_id,
+                    num=pr.num,
+                    width=g.width,
+                    height=g.height,
+                    col_bounds=g.col_bounds,
+                    page_confidence=pr.table.page_confidence,
+                )
                 session.add(page)
                 await session.flush()
                 for r in pr.table.rows:

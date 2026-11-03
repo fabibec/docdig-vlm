@@ -53,7 +53,9 @@ def _column_x(page: Page) -> dict[ColumnKey, tuple[int, int]]:
 
 def _row_out(row: Row) -> RowOut:
     return RowOut(
-        idx=row.idx, y0=row.y0, y1=row.y1,
+        idx=row.idx,
+        y0=row.y0,
+        y1=row.y1,
         values={c: row.effective().get(c.value, "") for c in COLUMNS},
         corrected=[ColumnKey(c) for c in row.corrections],
     )
@@ -61,20 +63,35 @@ def _row_out(row: Row) -> RowOut:
 
 def _flag_out(f: Flag) -> FlagOut:
     return FlagOut(
-        id=f.id, page=f.page_num, row=f.row_idx, column=f.column, source=f.source, severity=f.severity,
-        code=f.code, params=f.params, message=f.message, suggestion=f.suggestion,
-        confidence=f.confidence, resolved=f.resolved,
+        id=f.id,
+        page=f.page_num,
+        row=f.row_idx,
+        column=f.column,
+        source=f.source,
+        severity=f.severity,
+        code=f.code,
+        params=f.params,
+        message=f.message,
+        suggestion=f.suggestion,
+        confidence=f.confidence,
+        resolved=f.resolved,
     )
 
 
 @router.get("/{slug}", response_model=DocDetail)
 async def get_doc_detail(slug: str, session: AsyncSession = Depends(get_session)):
     doc = await _doc(session, slug)
-    nums = (await session.exec(select(Page.num, Page.page_confidence).where(Page.doc_id == doc.id)
-                               .order_by(Page.num))).all()
+    nums = (
+        await session.exec(select(Page.num, Page.page_confidence).where(Page.doc_id == doc.id).order_by(Page.num))
+    ).all()
     open_by_page = dict(
-        (await session.exec(select(Flag.page_num, func.count()).where(Flag.doc_id == doc.id, Flag.resolved == False)
-                            .group_by(Flag.page_num))).all()
+        (
+            await session.exec(
+                select(Flag.page_num, func.count())
+                .where(Flag.doc_id == doc.id, Flag.resolved == False)
+                .group_by(Flag.page_num)
+            )
+        ).all()
     )
     pages = [PageInfo(num=n, open_flags=open_by_page.get(n, 0), page_confidence=c) for n, c in nums]
     if not pages and doc.num_pages:  # still processing: page numbers are known, results are not
@@ -88,8 +105,11 @@ async def get_doc_detail(slug: str, session: AsyncSession = Depends(get_session)
 
 
 @router.get("/{slug}/flags", response_model=list[FlagOut])
-async def list_flags(slug: str, open: bool | None = Query(None, description="only open (true) / resolved (false)"),
-                     session: AsyncSession = Depends(get_session)):
+async def list_flags(
+    slug: str,
+    open: bool | None = Query(None, description="only open (true) / resolved (false)"),
+    session: AsyncSession = Depends(get_session),
+):
     doc = await _doc(session, slug)
     q = select(Flag).where(Flag.doc_id == doc.id)
     if open is not None:
@@ -104,8 +124,14 @@ async def page_rows(slug: str, num: int, session: AsyncSession = Depends(get_ses
     page = await _page(session, doc, num)
     if not page:
         raise HTTPException(404, "page not processed")
-    return PageRows(num=num, width=page.width, height=page.height, columns=COLUMNS,
-                    column_x=_column_x(page), rows=[_row_out(r) for r in await _rows(session, page)])
+    return PageRows(
+        num=num,
+        width=page.width,
+        height=page.height,
+        columns=COLUMNS,
+        column_x=_column_x(page),
+        rows=[_row_out(r) for r in await _rows(session, page)],
+    )
 
 
 @router.post("/{slug}/page/{num}/rows/{idx}/resolve", response_model=ResolveOut)
@@ -126,8 +152,11 @@ async def resolve_row(slug: str, num: int, idx: int, body: RowUpdate, session: A
             corrections[key.value] = value
     row.corrections = corrections  # reassign: JSON columns don't track in-place changes
 
-    flags = (await session.exec(select(Flag).where(Flag.doc_id == doc.id, Flag.page_num == num,
-                                                   Flag.row_idx == idx, Flag.resolved == False))).all()
+    flags = (
+        await session.exec(
+            select(Flag).where(Flag.doc_id == doc.id, Flag.page_num == num, Flag.row_idx == idx, Flag.resolved == False)
+        )
+    ).all()
     for f in flags:
         f.resolved = True
     await session.flush()
@@ -161,8 +190,9 @@ async def resolve_page(slug: str, num: int, body: PageUpdate, session: AsyncSess
                 corrections[key.value] = value
         row.corrections = corrections
 
-    flags = (await session.exec(select(Flag).where(Flag.doc_id == doc.id, Flag.page_num == num,
-                                                   Flag.resolved == False))).all()
+    flags = (
+        await session.exec(select(Flag).where(Flag.doc_id == doc.id, Flag.page_num == num, Flag.resolved == False))
+    ).all()
     for f in flags:
         f.resolved = True
     await session.flush()
@@ -198,8 +228,15 @@ async def create_flag(slug: str, body: FlagCreate, session: AsyncSession = Depen
     row = page and (await session.exec(select(Row).where(Row.page_id == page.id, Row.idx == body.row))).first()
     if not row:
         raise HTTPException(404, "row not found")
-    flag = Flag(doc_id=doc.id, page_num=body.page, row_idx=body.row, column=body.column, source=FlagSource.user,
-                severity=body.severity, message=body.message.strip())
+    flag = Flag(
+        doc_id=doc.id,
+        page_num=body.page,
+        row_idx=body.row,
+        column=body.column,
+        source=FlagSource.user,
+        severity=body.severity,
+        message=body.message.strip(),
+    )
     session.add(flag)
     await _flags_changed(session, doc)
     return FlagChangeOut(doc=doc_out(doc), flags=[_flag_out(flag)])

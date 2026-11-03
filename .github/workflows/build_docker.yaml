@@ -15,14 +15,19 @@ name: Build and Push Docker Image
 on:
   # Trigger the action manually from the UI
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Optional image tag (leave blank to tag as latest only)'
+        required: false
+        type: string
   # Trigger the action when a version tag is pushed
   push:
     tags:
       - '[0-9]+.[0-9]+.[0-9]+' # Push events to matching numeric semver tags, i.e., 1.0.0, 20.15.10
 
 jobs:
-  build-and-push-landing-page:
-    name: Build and Push Landing Page Docker Image
+  build-and-push-docker-image:
+    name: Build and Push Docker Image
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -44,18 +49,28 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Get the tag name
-        id: get_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      - name: Determine Docker tags
+        id: get_tags
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          IMAGE="$(echo "${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}" | tr '[:upper:]' '[:lower:]')"
+          echo "tags<<EOF" >> "$GITHUB_OUTPUT"
+          echo "${IMAGE}:latest" >> "$GITHUB_OUTPUT"
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "${IMAGE}:${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          elif [[ -n "${INPUT_TAG}" ]]; then
+            echo "${IMAGE}:${INPUT_TAG}" >> "$GITHUB_OUTPUT"
+          fi
+          echo "EOF" >> "$GITHUB_OUTPUT"
+          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push Landing Page Docker image
+      - name: Build and push Docker image
         uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
           push: true
-          tags: |
-            ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ steps.get_version.outputs.VERSION }}
-            ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:latest
-          cache-from: type=registry,ref=${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:buildcache
-          cache-to: type=registry,ref=${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:buildcache,mode=max
+          tags: ${{ steps.get_tags.outputs.tags }}
+          cache-from: type=registry,ref=${{ steps.get_tags.outputs.image }}:buildcache
+          cache-to: type=registry,ref=${{ steps.get_tags.outputs.image }}:buildcache,mode=max

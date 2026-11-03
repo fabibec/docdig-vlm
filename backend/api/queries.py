@@ -64,21 +64,15 @@ async def batch_outs(session: AsyncSession, batches: list[Batch]) -> list[BatchO
 
 
 async def get_doc(session: AsyncSession, slug: str) -> Doc | None:
-    return (
-        await session.exec(select(Doc).where(Doc.slug == slug).options(selectinload(Doc.batch)))
-    ).first()
+    return (await session.exec(select(Doc).where(Doc.slug == slug).options(selectinload(Doc.batch)))).first()
 
 
 async def load_doc(session: AsyncSession, doc_id: int) -> Doc:
-    return (
-        await session.exec(select(Doc).where(Doc.id == doc_id).options(selectinload(Doc.batch)))
-    ).one()
+    return (await session.exec(select(Doc).where(Doc.id == doc_id).options(selectinload(Doc.batch)))).one()
 
 
 async def review_stats(session: AsyncSession, batch_id: int | None = None, doc_id: int | None = None):
-    q = select(func.count(), func.coalesce(func.sum(Doc.open_flags), 0)).where(
-        Doc.status == DocStatus.review
-    )
+    q = select(func.count(), func.coalesce(func.sum(Doc.open_flags), 0)).where(Doc.status == DocStatus.review)
     if batch_id is not None:
         q = q.where(Doc.batch_id == batch_id)
     if doc_id is not None:
@@ -90,9 +84,7 @@ async def review_stats(session: AsyncSession, batch_id: int | None = None, doc_i
 async def refresh_doc_flags(session: AsyncSession, doc: Doc) -> None:
     """Recompute open_flags + review/done status (does not commit)."""
     open_flags = (
-        await session.exec(
-            select(func.count()).select_from(Flag).where(Flag.doc_id == doc.id, Flag.resolved == False)
-        )
+        await session.exec(select(func.count()).select_from(Flag).where(Flag.doc_id == doc.id, Flag.resolved == False))
     ).one()
     doc.open_flags = open_flags
     doc.status = DocStatus.review if open_flags else DocStatus.done

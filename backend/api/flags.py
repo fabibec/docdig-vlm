@@ -77,19 +77,43 @@ def _rule_flags(idx: int, values: dict[str, str]) -> list[dict]:
         try:
             num = float(raw.replace(",", "."))
         except ValueError:
-            flags.append(dict(row_idx=idx, column=col, source=FlagSource.rule, severity=Severity.error,
-                              code="not_a_number", params={"value": raw},
-                              message=f"“{raw}” is not a number."))
+            flags.append(
+                dict(
+                    row_idx=idx,
+                    column=col,
+                    source=FlagSource.rule,
+                    severity=Severity.error,
+                    code="not_a_number",
+                    params={"value": raw},
+                    message=f"“{raw}” is not a number.",
+                )
+            )
             continue
         if not lo <= num <= hi:
-            flags.append(dict(row_idx=idx, column=col, source=FlagSource.rule, severity=Severity.error,
-                              code=code, params={"value": raw, "min": lo, "max": hi},
-                              message=f"“{raw}” is outside {lo:g}–{hi:g}."))
+            flags.append(
+                dict(
+                    row_idx=idx,
+                    column=col,
+                    source=FlagSource.rule,
+                    severity=Severity.error,
+                    code=code,
+                    params={"value": raw, "min": lo, "max": hi},
+                    message=f"“{raw}” is outside {lo:g}–{hi:g}.",
+                )
+            )
     t = values.get(ColumnKey.time.value, "")
     if t and not TIME_RE.fullmatch(t):
-        flags.append(dict(row_idx=idx, column=ColumnKey.time, source=FlagSource.rule,
-                          severity=Severity.warning, code="time_format", params={"value": t},
-                          message=f"“{t}” is not HH:MM."))
+        flags.append(
+            dict(
+                row_idx=idx,
+                column=ColumnKey.time,
+                source=FlagSource.rule,
+                severity=Severity.warning,
+                code="time_format",
+                params={"value": t},
+                message=f"“{t}” is not HH:MM.",
+            )
+        )
     return flags
 
 

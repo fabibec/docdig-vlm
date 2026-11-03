@@ -53,49 +53,56 @@ The API uses these keys and the frontend owns the translated labels.
 ```python
 class Batch(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
-    slug: str = Field(unique=True, index=True)          # 20261028-mettnau
+    slug: str = Field(unique=True, index=True)  # 20261028-mettnau
     name: str
-    owner: str | None = None                            # username once auth exists (§8)
+    owner: str | None = None  # username once auth exists (§8)
     created_at: datetime
+
 
 class Doc(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
-    slug: str = Field(unique=True, index=True)          # 20261028-mettnau-scan-01
+    slug: str = Field(unique=True, index=True)  # 20261028-mettnau-scan-01
     batch_id: int = Field(foreign_key="batch.id", index=True)
-    filename: str                                       # unique within a batch
+    filename: str  # unique within a batch
     status: DocStatus = DocStatus.queued
     num_pages: int | None = None
-    open_flags: int = 0                                 # denormalised for lists
+    open_flags: int = 0  # denormalised for lists
     error: str | None = None
     created_at: datetime
     updated_at: datetime
 
+
 class Page(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     doc_id: int = Field(foreign_key="doc.id", index=True)
-    num: int                                            # 1-based
-    width: int; height: int                             # cropped image size
+    num: int  # 1-based
+    width: int
+    height: int  # cropped image size
     col_bounds: list[int] = Field(sa_column=Column(JSON))
     page_confidence: float | None = None
+
 
 class Row(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     page_id: int = Field(foreign_key="page.id", index=True)
-    idx: int                                            # 1-based data row (header not counted)
-    y0: int; y1: int                                    # bounds in the cropped image
-    values: dict[str, str] = Field(sa_column=Column(JSON))                             # machine output, never overwritten
+    idx: int  # 1-based data row (header not counted)
+    y0: int
+    y1: int  # bounds in the cropped image
+    values: dict[str, str] = Field(sa_column=Column(JSON))  # machine output, never overwritten
     corrections: dict[str, str] = Field(default_factory=dict, sa_column=Column(JSON))  # human edits
+
 
 class Flag(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     doc_id: int = Field(foreign_key="doc.id", index=True)
-    page_num: int; row_idx: int
+    page_num: int
+    row_idx: int
     column: ColumnKey | None = None
     source: Literal["llm", "rule"]
     severity: Literal["error", "warning"]
-    code: str | None = None                             # rule flags: i18n key
+    code: str | None = None  # rule flags: i18n key
     params: dict = Field(default_factory=dict, sa_column=Column(JSON))
-    message: str                                        # ONE text
+    message: str  # ONE text
     suggestion: str | None = None
     confidence: float | None = None
     resolved: bool = False
@@ -128,78 +135,137 @@ class Flag(SQLModel, table=True):
 
 ```python
 class Paginated[T](BaseModel):
-    items: list[T]; total: int; page: int; size: int
+    items: list[T]
+    total: int
+    page: int
+    size: int
+
 
 class StatusCounts(BaseModel):
-    queued: int = 0; processing: int = 0; review: int = 0; done: int = 0; error: int = 0
+    queued: int = 0
+    processing: int = 0
+    review: int = 0
+    done: int = 0
+    error: int = 0
+
 
 class BatchOut(BaseModel):
-    slug: str; name: str; created_at: datetime
-    num_docs: int; counts: StatusCounts; open_flags: int
+    slug: str
+    name: str
+    created_at: datetime
+    num_docs: int
+    counts: StatusCounts
+    open_flags: int
+
 
 class DocOut(BaseModel):
-    slug: str; batch_slug: str; filename: str
-    status: DocStatus; num_pages: int | None; open_flags: int
-    error: str | None; updated_at: datetime
+    slug: str
+    batch_slug: str
+    filename: str
+    status: DocStatus
+    num_pages: int | None
+    open_flags: int
+    error: str | None
+    updated_at: datetime
+
 
 class PageInfo(BaseModel):
-    num: int; open_flags: int; page_confidence: float | None
+    num: int
+    open_flags: int
+    page_confidence: float | None
+
 
 class DocDetail(DocOut):
     batch_name: str
     pages: list[PageInfo]
-    artifact_url: str        # "/api/docs/{slug}/artifacts/{state}/page/{num}"
+    artifact_url: str  # "/api/docs/{slug}/artifacts/{state}/page/{num}"
+
 
 class RowOut(BaseModel):
-    idx: int; y0: int; y1: int
-    values: dict[ColumnKey, str]          # effective
+    idx: int
+    y0: int
+    y1: int
+    values: dict[ColumnKey, str]  # effective
     corrected: list[ColumnKey]
 
+
 class PageRows(BaseModel):
-    num: int; width: int; height: int     # SVG overlay viewBox
+    num: int
+    width: int
+    height: int  # SVG overlay viewBox
     columns: list[ColumnKey]
-    col_bounds: list[int]                 # cell (r, c) = x∈[col_bounds[c], col_bounds[c+1]], y∈[y0, y1]
+    col_bounds: list[int]  # cell (r, c) = x∈[col_bounds[c], col_bounds[c+1]], y∈[y0, y1]
     rows: list[RowOut]
 
+
 class FlagOut(BaseModel):
-    id: int; page: int; row: int; column: ColumnKey | None
-    source: Literal["llm", "rule"]; severity: Literal["error", "warning"]
-    code: str | None; params: dict[str, str | float]
-    message: str; suggestion: str | None; confidence: float | None
+    id: int
+    page: int
+    row: int
+    column: ColumnKey | None
+    source: Literal["llm", "rule"]
+    severity: Literal["error", "warning"]
+    code: str | None
+    params: dict[str, str | float]
+    message: str
+    suggestion: str | None
+    confidence: float | None
     resolved: bool
 
+
 class RowUpdate(BaseModel):
-    values: dict[ColumnKey, str] = {}     # changed cells only; empty = accept machine values
+    values: dict[ColumnKey, str] = {}  # changed cells only; empty = accept machine values
+
 
 class ResolveOut(BaseModel):
-    doc: DocOut; resolved_flag_ids: list[int]
+    doc: DocOut
+    resolved_flag_ids: list[int]
+
 
 class DuplicateFiles(BaseModel):
-    detail: Literal["duplicate_files"]; filenames: list[str]
+    detail: Literal["duplicate_files"]
+    filenames: list[str]
+
 
 class ReviewItem(BaseModel):
-    slug: str; batch_slug: str; filename: str; open_flags: int
+    slug: str
+    batch_slug: str
+    filename: str
+    open_flags: int
+
 
 class ReviewQueue(BaseModel):
     scope: Literal["all", "batch", "doc"]
-    files_left: int; flags_left: int
-    docs: list[ReviewItem]                # oldest batch first, then filename
+    files_left: int
+    flags_left: int
+    docs: list[ReviewItem]  # oldest batch first, then filename
 ```
 
 ### WebSocket events
 
 ```python
 class Progress(BaseModel):
-    step: ArtifactState; page: int; pages: int
+    step: ArtifactState
+    page: int
+    pages: int
+
 
 class DocEvent(BaseModel):
-    type: Literal["doc.status"]; doc: DocOut; progress: Progress | None = None
+    type: Literal["doc.status"]
+    doc: DocOut
+    progress: Progress | None = None
+
 
 class BatchEvent(BaseModel):
-    type: Literal["batch.created", "batch.updated"]; batch: BatchOut
+    type: Literal["batch.created", "batch.updated"]
+    batch: BatchOut
 
-class ReviewEvent(BaseModel):              # also sent once on connect
-    type: Literal["review.pending"]; files_left: int; flags_left: int
+
+class ReviewEvent(BaseModel):  # also sent once on connect
+    type: Literal["review.pending"]
+    files_left: int
+    flags_left: int
+
 
 ServerEvent = Annotated[DocEvent | BatchEvent | ReviewEvent, Field(discriminator="type")]
 ```
@@ -229,16 +295,24 @@ flowchart LR
 - Removed: `worker.py`, `/internal/events`, `api_url`, `internal_token`.
 
 ```python
-class DocJob(BaseModel):      # main → worker
-    doc_id: int; input_pdf: FilePath; out_dir: DirectoryPath
+class DocJob(BaseModel):  # main → worker
+    doc_id: int
+    input_pdf: FilePath
+    out_dir: DirectoryPath
+
 
 class PageResult(BaseModel):  # worker → main
-    num: int; width: int; height: int
-    col_bounds: list[int]; row_bounds: list[tuple[int, int]]
-    table: PageTable          # existing LLM schema
+    num: int
+    width: int
+    height: int
+    col_bounds: list[int]
+    row_bounds: list[tuple[int, int]]
+    table: PageTable  # existing LLM schema
+
 
 class DocResult(BaseModel):
-    doc_id: int; pages: list[PageResult]
+    doc_id: int
+    pages: list[PageResult]
 ```
 
 **Flags** (`backend/api/flags.py`, replaces `result.py`):

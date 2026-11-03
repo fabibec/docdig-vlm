@@ -20,7 +20,9 @@ async def review_queue(
 ):
     """Docs that need review: oldest batch first, then filename."""
     q = (
-        select(Doc).join(Batch).where(Doc.status == DocStatus.review)
+        select(Doc)
+        .join(Batch)
+        .where(Doc.status == DocStatus.review)
         .options(selectinload(Doc.batch))
         .order_by(Batch.created_at, Batch.id, Doc.filename)
     )
@@ -44,6 +46,7 @@ async def review_queue(
         scope="doc" if doc else "batch" if batch else "all",
         files_left=files_left,
         flags_left=flags_left,
-        docs=[ReviewItem(slug=d.slug, batch_slug=d.batch.slug, filename=d.filename, open_flags=d.open_flags)
-              for d in docs],
+        docs=[
+            ReviewItem(slug=d.slug, batch_slug=d.batch.slug, filename=d.filename, open_flags=d.open_flags) for d in docs
+        ],
     )

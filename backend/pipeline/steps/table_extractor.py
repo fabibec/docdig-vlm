@@ -20,9 +20,7 @@ class TableExtractor(PipelineStep):
     def get_grid_masks(gray: np.ndarray):
         """Extracts horizontal lines, vertical lines, and ONLY joints belonging to the main table."""
         h_img, w_img = gray.shape[:2]
-        thresh = cv2.adaptiveThreshold(
-            ~gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 15, -2
-        )
+        thresh = cv2.adaptiveThreshold(~gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 15, -2)
 
         # Zero out 4 pixels at the extreme edge
         thresh[:4, :] = 0
@@ -217,11 +215,7 @@ class TableExtractor(PipelineStep):
 
         # ONLY keep horizontal lines that have at least 4 distinct green dots!
         valid_row_centers = [int(np.mean(g[:, 1])) for g in row_groups if len(g) >= 4]
-        row_height = (
-            int(np.median(np.diff(valid_row_centers)))
-            if len(valid_row_centers) > 5
-            else 35
-        )
+        row_height = int(np.median(np.diff(valid_row_centers))) if len(valid_row_centers) > 5 else 35
         valid_row_centers = TableExtractor.drop_spurious_lines(valid_row_centers, row_height)
 
         # Group joint centers by X-coordinate and require at least 5 dots vertically per column line
@@ -263,24 +257,16 @@ class TableExtractor(PipelineStep):
             if y2 > row_bounds[-1] + row_height // 2:
                 row_bounds.append(y2)
             out_dir = output_dir / "rows"
-            for first, last, ys, ye in TableExtractor.group_cell_spans(
-                row_bounds, n, y1, y2
-            ):
-                out_path = out_dir / TableExtractor.span_name(
-                    img_path.stem, "row", first, last
-                )
+            for first, last, ys, ye in TableExtractor.group_cell_spans(row_bounds, n, y1, y2):
+                out_path = out_dir / TableExtractor.span_name(img_path.stem, "row", first, last)
                 out_dir.mkdir(parents=True, exist_ok=True)
                 cv2.imwrite(str(out_path), img[ys:ye, x1:x2])
 
         if split == "col":
             col_bounds = list(valid_col_centers)
             out_dir = output_dir / "cols"
-            for first, last, xs, xe in TableExtractor.group_cell_spans(
-                col_bounds, n, x1, x2
-            ):
-                out_path = out_dir / TableExtractor.span_name(
-                    img_path.stem, "col", first, last
-                )
+            for first, last, xs, xe in TableExtractor.group_cell_spans(col_bounds, n, x1, x2):
+                out_path = out_dir / TableExtractor.span_name(img_path.stem, "col", first, last)
                 out_dir.mkdir(parents=True, exist_ok=True)
                 cv2.imwrite(str(out_path), img[y1:y2, xs:xe])
 
@@ -298,9 +284,7 @@ class TableExtractor(PipelineStep):
             row_bounds=list(pairwise(lines[1:])),
             col_bounds=[x - x1 for x in valid_col_centers],
         )
-        (output_dir / f"{img_path.stem}.geom.json").write_text(
-            geometry.model_dump_json(indent=2), encoding="utf-8"
-        )
+        (output_dir / f"{img_path.stem}.geom.json").write_text(geometry.model_dump_json(indent=2), encoding="utf-8")
 
         if draw_rows:
             grid_dir = output_dir / "grid"

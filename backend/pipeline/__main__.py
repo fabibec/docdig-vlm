@@ -16,7 +16,7 @@ from backend.pipeline import STEP_NAMES, PipelineTask, build_pipeline
 
 def _steps(value: str) -> list[str]:
     steps = [s.strip() for s in value.split(",") if s.strip()]
-    allowed = [*STEP_NAMES, "ocr"]
+    allowed = [*STEP_NAMES, "ocr", "tesseract"]
     if bad := [s for s in steps if s not in allowed]:
         raise argparse.ArgumentTypeError(f"unknown step(s) {bad}, choose from {allowed}")
     return steps
@@ -34,7 +34,9 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     steps = args.steps or STEP_NAMES
     # Only set up what runs (the LLM step needs API credentials, OCR a GPU).
-    pipeline = build_pipeline(draw_rows=args.draw_rows, ocr="ocr" in steps).setup(only=steps)
+    pipeline = build_pipeline(draw_rows=args.draw_rows, ocr="ocr" in steps, tesseract="tesseract" in steps).setup(
+        only=steps
+    )
     try:
         for pdf in pdfs:
             out = args.output / pdf.stem
@@ -49,20 +51,30 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="python -m backend.pipeline", description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        prog="python -m backend.pipeline", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     run = sub.add_parser("run", help="run the pipeline on PDFs (files or folders)")
     run.add_argument("inputs", nargs="+", type=Path)
-    run.add_argument("-o", "--output", type=Path, default=Path("data/output"),
-                     help="output root; each PDF gets <output>/<pdf stem>/ (default: data/output)")
-    run.add_argument("--steps", type=_steps, default=None,
-                     help=f"comma separated subset of {STEP_NAMES} (+ ocr); missing inputs are read from disk")
-    run.add_argument("--page", type=int, action="append",
-                     help="1-based page number, repeatable (default: all pages)")
-    run.add_argument("--draw-rows", action="store_true",
-                     help="write cropped/grid/pNNN.jpg with detected rows and columns")
+    run.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=Path("data/output"),
+        help="output root; each PDF gets <output>/<pdf stem>/ (default: data/output)",
+    )
+    run.add_argument(
+        "--steps",
+        type=_steps,
+        default=None,
+        help=f"comma separated subset of {STEP_NAMES} (+ ocr, tesseract); missing inputs are read from disk",
+    )
+    run.add_argument("--page", type=int, action="append", help="1-based page number, repeatable (default: all pages)")
+    run.add_argument(
+        "--draw-rows", action="store_true", help="write cropped/grid/pNNN.jpg with detected rows and columns"
+    )
     run.set_defaults(func=cmd_run)
 
     args = parser.parse_args(argv)

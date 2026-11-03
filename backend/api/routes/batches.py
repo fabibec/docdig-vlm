@@ -76,8 +76,9 @@ async def create_batch(
     by_name = {PurePath(f.filename or "").name: f for f in files}
     try:
         for doc in docs:
-            await store.save_upload(by_name[doc.filename], f"{slug}/{doc.slug}", doc.filename,
-                                    settings.max_upload_mb * 1024 * 1024)
+            await store.save_upload(
+                by_name[doc.filename], f"{slug}/{doc.slug}", doc.filename, settings.max_upload_mb * 1024 * 1024
+            )
         await session.commit()  # docs become visible only after their files are on disk
     except FileTooLarge as exc:
         await session.rollback()
@@ -94,8 +95,9 @@ async def create_batch(
 
     (out,) = await batch_outs(session, [batch])
     files_left, flags_left = await review_stats(session)
-    await hub.broadcast(BatchEvent(type="batch.created", batch=out),
-                        ReviewEvent(files_left=files_left, flags_left=flags_left))
+    await hub.broadcast(
+        BatchEvent(type="batch.created", batch=out), ReviewEvent(files_left=files_left, flags_left=flags_left)
+    )
     return out
 
 
@@ -117,8 +119,7 @@ async def get_batch(slug: str, session: AsyncSession = Depends(get_session)):
 
 
 @router.get("/{slug}/docs", response_model=Paginated[DocOut])
-async def list_docs(slug: str, page: int = PageNum, size: int = PageSize,
-                    session: AsyncSession = Depends(get_session)):
+async def list_docs(slug: str, page: int = PageNum, size: int = PageSize, session: AsyncSession = Depends(get_session)):
     batch = await _batch(session, slug)
     total = (await session.exec(select(func.count()).select_from(Doc).where(Doc.batch_id == batch.id))).one()
     docs = (
