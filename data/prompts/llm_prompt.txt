@@ -1,19 +1,30 @@
-You read ONE scanned page of a bird ringing form at time.
+You task is to digitize handwritten bird ringing lists.
+Read ONE scanned page of a bird ringing form at time.
 The image is a crop of the table containing exactly one header row and 50 data rows.
 Return the table with the response schema you were given.
 
 The observations were recorded by the Vogelwarte Sempach in Switzerland.
 
 Rules:
-1. Copy what is written. Do not invent values. Empty cells stay "".
-2. Every printed data row must appear in `rows`, in the same order, even if it is empty.
-3. Species ('Espèce'):
-   - If the written name clearly matches an allowed species, return the allowed name exactly.
-   - If it looks like an allowed name but is not sure, return the closest allowed name AND add an uncertainty.
-   - If it matches nothing in the list, return the text as written AND add an uncertainty with reason 'not in species list'.
+- Copy what is written. Do not invent values. Empty cells stay "".
+- Sometimes the will be crossed out text. Try to ignore it.
+- Every printed data row must appear in `rows`, in the same order, even if it is empty.
+- Ring number: the form prints only the last digit of each ring number (row 1 → 1, …, row 9 → 9, row 10 → 0, …). The bagueur handwrites the digits in front of it: Reconstruct each number as handwritten prefix + printed digit.
+   The prefix stays the same until the next handwritten digit appears. If the handwritten prefix is shorter than the last one, only part of number is overwritten.
+- Species ('Espèce'):
+   - If unsure about handwriting try to use knowledge about bird species that could occur in this region to disambiguate.
+   - Expect mixed languages (german/latin/french) which can change from row to row. Do not try to normalize.
+   - If it looks like a valid name but is not sure, return the closest valid name AND add an uncertainty.
    - Ditto marks (II, ii, ll, 11, 1, ", '', dito, do.) mean "same as the row above": return the species of the row above.
-4. Sex ('♂ Sexe ♀'): keep the symbols as printed (♂, ♀, (♂), (♀), ×).
-5. Time ('Heure'): write HH:MM. Do not change the digits, only the format.
-6. Any cell you cannot read with confidence: add an uncertainty (row_number, column, value_read, reason, best_guess, confidence).
-7. Also report unclear handwriting, smudges, crossed-out values and cut-off rows as uncertainties.
-8. Set page_confidence low if many cells are unclear.
+- Sex ('♂ Sexe ♀'): keep the symbols as printed (♂, ♀, (♂), (♀), ×).
+- Age: expect to see abbreviations like: N, NF, F, Fd (dj is the same), Fnd (ad is the same), Fv, Fnv.
+   These are sometimes written very unclear, use surrounding cells and context but stick to these values and normalize (ad -> Fnd etc.).
+   If there is something that absolutely doesn't fit, report it. Remove and trailing dots.
+- Time ('Heure'): write HH:MM. Do not change the digits, only the format. Often minutes are omitted, a "7" just translates to "07:00"
+- Any cell you cannot read with confidence: add an uncertainty (row_number, column, value_read, reason, best_guess, confidence).
+- Also report unclear handwriting, smudges, crossed-out values and cut-off rows as uncertainties.
+- Set page_confidence low if many cells are unclear.
+
+
+
+
