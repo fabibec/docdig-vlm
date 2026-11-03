@@ -49,6 +49,7 @@ export interface FlagOut {
 }
 
 export interface RowUpdate { values: Partial<Record<ColumnKey, string>> }
+export interface PageUpdate { rows: Record<number, Partial<Record<ColumnKey, string>>> }
 export interface ResolveOut { doc: DocOut; resolved_flag_ids: number[] }
 /** Reviewer annotation, stored as a flag with source=user. column null = whole row. */
 export interface FlagCreate { page: number; row: number; column: ColumnKey | null; message: string; severity?: Severity }

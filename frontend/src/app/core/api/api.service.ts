@@ -3,8 +3,8 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import {
-  ArtifactState, BatchOut, DocDetail, DocOut, FlagChangeOut, FlagCreate, FlagOut, PageRows, Paginated, ResolveOut,
-  ReviewQueue, RowUpdate,
+  ArtifactState, BatchOut, DocDetail, DocOut, FlagChangeOut, FlagCreate, FlagOut, PageRows, PageUpdate, Paginated,
+  ResolveOut, ReviewQueue, RowUpdate,
 } from './api.types';
 
 const API = '/api';
@@ -19,6 +19,7 @@ export class Api {
   batchDocsUrl = (slug: string, page: number, size: number) => `${API}/batches/${slug}/docs?page=${page}&size=${size}`;
   docUrl = (slug: string) => `${API}/docs/${slug}`;
   flagsUrl = (slug: string) => `${API}/docs/${slug}/flags?open=true`;
+  allFlagsUrl = (slug: string) => `${API}/docs/${slug}/flags`;
   rowsUrl = (slug: string, page: number) => `${API}/docs/${slug}/page/${page}/rows`;
   artifactUrl = (slug: string, state: ArtifactState, page: number) => `${API}/docs/${slug}/artifacts/${state}/page/${page}`;
 
@@ -42,6 +43,10 @@ export class Api {
 
   resolveRow(slug: string, page: number, idx: number, body: RowUpdate) {
     return this.http.post<ResolveOut>(`${API}/docs/${slug}/page/${page}/rows/${idx}/resolve`, body);
+  }
+
+  resolvePage(slug: string, page: number, body: PageUpdate) {
+    return this.http.post<ResolveOut>(`${API}/docs/${slug}/page/${page}/resolve`, body);
   }
 
   createFlag(slug: string, body: FlagCreate) {

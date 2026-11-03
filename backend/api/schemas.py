@@ -101,6 +101,12 @@ class RowUpdate(BaseModel):
     )
 
 
+class PageUpdate(BaseModel):
+    rows: dict[int, dict[ColumnKey, str]] = Field(
+        default_factory=dict, description="1-based row idx -> changed cell values; resolves all open flags on the page"
+    )
+
+
 class ResolveOut(BaseModel):
     doc: DocOut
     resolved_flag_ids: list[int]

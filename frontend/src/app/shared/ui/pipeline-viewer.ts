@@ -2,7 +2,7 @@ import {
   ChangeDetectionStrategy, Component, ElementRef, computed, effect, inject, input, model, output, signal, viewChild,
 } from '@angular/core';
 import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideCopy, lucideCheck } from '@ng-icons/lucide';
+import { lucideCopy, lucideCheck, lucideSquareSplitHorizontal } from '@ng-icons/lucide';
 
 import { Api } from '../../core/api/api.service';
 import { ColumnKey, COLUMNS, PageInfo, PageRows } from '../../core/api/api.types';
@@ -19,7 +19,7 @@ export interface CellRef { row: number; column: ColumnKey | null }
 @Component({
   selector: 'app-pipeline-viewer',
   imports: [TPipe, NgIcon],
-  providers: [provideIcons({ lucideCopy, lucideCheck })],
+  providers: [provideIcons({ lucideCopy, lucideCheck, lucideSquareSplitHorizontal })],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { '[class]': "fill() ? 'flex flex-col xl:min-h-0 xl:flex-1' : 'block'" },
   template: `
@@ -31,15 +31,25 @@ export interface CellRef { row: number; column: ColumnKey | null }
                   (click)="step.set(s.id)">{{ s.label | t }}</button>
         }
       </div>
-      @if (pages().length > 1) {
-        <label class="ml-auto flex items-center gap-2 text-sm text-muted-foreground">
-          {{ 'viewer.page' | t }}
-          <select class="input w-auto py-1" [value]="page()" (change)="page.set(+$any($event.target).value)">
-            @for (p of pages(); track p.num) {
-              <option [value]="p.num" [selected]="p.num === page()">{{ p.num }}{{ p.open_flags ? ' (' + p.open_flags + ')' : '' }}</option>
-            }
-          </select>
-        </label>
+      @if (interactive() || pages().length > 1) {
+        <div class="ml-auto flex items-center gap-2">
+          @if (interactive()) {
+            <button type="button" class="btn-outline px-2.5 py-1.5" (click)="openSplit.emit()"
+                    [attr.aria-label]="'review.splitView' | t" [attr.title]="'review.splitView' | t">
+              <ng-icon name="lucideSquareSplitHorizontal" size="1.1rem" />
+            </button>
+          }
+          @if (pages().length > 1 || interactive()) {
+            <label class="flex items-center gap-2 text-sm text-muted-foreground">
+              {{ 'viewer.page' | t }}
+              <select class="input w-auto py-1" [value]="page()" (change)="page.set(+$any($event.target).value)">
+                @for (p of pages(); track p.num) {
+                  <option [value]="p.num" [selected]="p.num === page()">{{ p.num }}{{ p.open_flags ? ' (' + p.open_flags + ')' : '' }}</option>
+                }
+              </select>
+            </label>
+          }
+        </div>
       }
     </div>
 
@@ -140,6 +150,7 @@ export class PipelineViewer {
   /** xl: grow to the parent's height (parent must be a flex column) instead of capping frames at ~75vh. */
   readonly fill = input(false);
   cellClick = output<CellRef>();
+  openSplit = output<void>();
 
   protected steps = [
     { id: 'raw', label: 'viewer.original' },

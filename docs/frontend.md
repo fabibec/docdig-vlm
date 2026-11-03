@@ -38,7 +38,7 @@ src/app/
   layout/                    top-bar.ts, logo.ts
   features/
     batches/                 batches-page, batch-card, upload-dialog
-    review/                  review-page, record-editor
+    review/                  review-page, record-editor, split-review
     document/                document-page
   shared/ui/                 pipeline-viewer, paginator, status-badge, empty-state, file-size pipe, markdown
   shared/core, shared/utils  existing zard code (untouched)
@@ -116,6 +116,11 @@ Layout:
 - **Picking any row** (`interactive` input): a click on a row in step 2 (click position mapped through the geometry) or a cell in step 3 opens that row in the editor, even when it has no flag.
   - The clicked column is preselected for a new note.
   - You can correct values there or add a note.
+- **Split View toggle:** in `ReviewPage`, a button (`lucideSquareSplitHorizontal`) immediately to the left of the page selector switches the 3-column layout to `SplitReview` (`features/review/split-review.ts`):
+  - **Slim top bar** (below the persistent Review Header): *Save & next* and *Skip* on the left; back-to-columns button (`lucideColumns`) and the page selector on the right.
+  - **Left pane:** cropped table image with SVG highlights (amber = open flag, green = resolved flag, blue = user-edited cell).
+  - **Right pane:** interactive rendered table with hover tooltips on flagged cells (showing the error/uncertainty message, confidence, clickable suggestion, and a resolve button) and inline editing. Resolved flags turn green; any other edited cells turn blue.
+  - **Save & next** resolves and saves the whole page at once (showing a confirmation warning if any flags on the page have not been resolved yet).
 
 **Reviewer notes and undo:**
 - **Add note:** pick a column (or *Whole row*), write a comment, then *Add note*. This calls `POST /api/docs/{slug}/flags`.

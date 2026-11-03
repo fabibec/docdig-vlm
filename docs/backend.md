@@ -84,6 +84,7 @@ All routes are under `/api`. OpenAPI is at `/docs` and `/openapi.json`. The WS e
 | GET | `/docs/{slug}` · `/docs/{slug}/flags?open=` | `DocDetail` · `list[FlagOut]` |
 | GET | `/docs/{slug}/page/{num}/rows` | `PageRows` · 404 if the page is not processed |
 | POST | `/docs/{slug}/page/{num}/rows/{idx}/resolve` (body `RowUpdate`) | `ResolveOut` |
+| POST | `/docs/{slug}/page/{num}/resolve` (body `PageUpdate`) | `ResolveOut` |
 | POST | `/docs/{slug}/flags` (body `FlagCreate`) | 201 `FlagChangeOut` · 404 unknown row · 409 doc not processed |
 | DELETE | `/docs/{slug}/flags/{id}` | `FlagChangeOut` · 409 if not a `user` flag |
 | POST | `/docs/{slug}/flags/reopen` (body `FlagIds`) | `FlagChangeOut` · 404 if an id is unknown |

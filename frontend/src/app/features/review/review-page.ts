@@ -15,11 +15,19 @@ import { Realtime } from '../../core/realtime/realtime.service';
 import { EmptyState } from '../../shared/ui/empty-state';
 import { CellRef, PipelineViewer, ViewerStep } from '../../shared/ui/pipeline-viewer';
 import { flagText, NoteDraft, RecordEditor, ReviewRecord } from './record-editor';
+import { PageDraft, SplitReview } from './split-review';
 
 type Draft = Partial<Record<ColumnKey, string>>;
 
 /** What the last "Save & next" changed, so it can be undone. */
-interface LastSave { slug: string; page: number; row: number; before: Draft; flagIds: number[] }
+interface LastSave {
+  slug: string;
+  page: number;
+  row?: number;
+  before?: Draft;
+  beforePage?: PageDraft;
+  flagIds: number[];
+}
 
 const UNDO_MS = 10_000;
 
@@ -30,7 +38,7 @@ const UNDO_MS = 10_000;
  */
 @Component({
   selector: 'app-review-page',
-  imports: [TPipe, RouterLink, NgIcon, EmptyState, PipelineViewer, RecordEditor],
+  imports: [TPipe, RouterLink, NgIcon, EmptyState, PipelineViewer, RecordEditor, SplitReview],
   providers: [provideIcons({ lucideCircleCheck })],
   changeDetection: ChangeDetectionStrategy.OnPush,
   // xl: fill exactly the space below the top bar (no page scroll); every column scrolls on its own.
@@ -64,70 +72,79 @@ const UNDO_MS = 10_000;
           </div>
         </div>
 
-        <div class="grid gap-4 md:grid-cols-[minmax(0,340px)_minmax(0,1fr)]
-                    xl:min-h-0 xl:flex-1 xl:grid-cols-[260px_340px_minmax(0,1fr)] xl:grid-rows-[minmax(0,1fr)]">
-          <div class="flex min-w-0 flex-col gap-4 xl:contents">
-            <!-- flagged records -->
-            <section class="card flex flex-col p-3 xl:min-h-0">
-              <h2 class="mb-2 font-semibold">{{ 'review.records' | t }}</h2>
-              <div class="max-h-[40vh] overflow-y-auto overflow-x-hidden pr-2 xl:max-h-none xl:min-h-0 xl:flex-1">
-                @for (g of byPage(); track g.page) {
-                  <h3 class="sticky top-0 bg-card py-1 text-xs font-medium uppercase text-muted-foreground">
-                    {{ 'review.page' | t: { n: g.page } }}
-                  </h3>
-                  @for (r of g.records; track r.key) {
-                    <button class="mb-1 w-full rounded-md border px-2 py-1.5 text-left text-sm transition-colors"
-                            [class]="r.key === selected()?.key ? 'border-primary bg-primary/10' : 'border-transparent hover:bg-muted'"
-                            (click)="select(r)">
-                      <div class="flex items-center gap-2">
-                        <span class="text-muted-foreground">#{{ r.row }}</span>
-                        <span class="truncate font-medium">{{ species(r) }}</span>
-                        <span class="ml-auto flex shrink-0 items-center gap-1">
-                          @if (hasNote(r)) { <span class="size-2 rounded-full bg-sky-500" [attr.title]="'source.user' | t"></span> }
-                          @if (r.flags.length > 1) {
-                            <span class="rounded-full bg-amber-100 px-1.5 text-xs text-amber-800 dark:bg-amber-900/50 dark:text-amber-300">
-                              {{ r.flags.length }}
-                            </span>
-                          }
-                        </span>
-                      </div>
-                      <p class="truncate text-xs text-muted-foreground">{{ summary(r) }}</p>
-                    </button>
+        @if (splitMode()) {
+          @if (detail.hasValue()) {
+            <app-split-review [slug]="slug()!" [pages]="detail.value().pages" [rows]="rows.hasValue() ? rows.value() : null"
+                              [flags]="flags.hasValue() ? flags.value() : []" [busy]="busy()" [error]="saveError()"
+                              [(page)]="page" (closeSplit)="splitMode.set(false)"
+                              (savePage)="savePage($event)" (skip)="skipPage()" />
+          }
+        } @else {
+          <div class="grid gap-4 md:grid-cols-[minmax(0,340px)_minmax(0,1fr)]
+                      xl:min-h-0 xl:flex-1 xl:grid-cols-[260px_340px_minmax(0,1fr)] xl:grid-rows-[minmax(0,1fr)]">
+            <div class="flex min-w-0 flex-col gap-4 xl:contents">
+              <!-- flagged records -->
+              <section class="card flex flex-col p-3 xl:min-h-0">
+                <h2 class="mb-2 font-semibold">{{ 'review.records' | t }}</h2>
+                <div class="max-h-[40vh] overflow-y-auto overflow-x-hidden pr-2 xl:max-h-none xl:min-h-0 xl:flex-1">
+                  @for (g of byPage(); track g.page) {
+                    <h3 class="sticky top-0 bg-card py-1 text-xs font-medium uppercase text-muted-foreground">
+                      {{ 'review.page' | t: { n: g.page } }}
+                    </h3>
+                    @for (r of g.records; track r.key) {
+                      <button class="mb-1 w-full rounded-md border px-2 py-1.5 text-left text-sm transition-colors"
+                              [class]="r.key === selected()?.key ? 'border-primary bg-primary/10' : 'border-transparent hover:bg-muted'"
+                              (click)="select(r)">
+                        <div class="flex items-center gap-2">
+                          <span class="text-muted-foreground">#{{ r.row }}</span>
+                          <span class="truncate font-medium">{{ species(r) }}</span>
+                          <span class="ml-auto flex shrink-0 items-center gap-1">
+                            @if (hasNote(r)) { <span class="size-2 rounded-full bg-sky-500" [attr.title]="'source.user' | t"></span> }
+                            @if (r.flags.length > 1) {
+                              <span class="rounded-full bg-amber-100 px-1.5 text-xs text-amber-800 dark:bg-amber-900/50 dark:text-amber-300">
+                                {{ r.flags.length }}
+                              </span>
+                            }
+                          </span>
+                        </div>
+                        <p class="truncate text-xs text-muted-foreground">{{ summary(r) }}</p>
+                      </button>
+                    }
+                  } @empty {
+                    <div class="flex flex-col items-center gap-2 py-6 text-center">
+                      <ng-icon name="lucideCircleCheck" size="2rem" class="text-green-600" />
+                      <p class="text-sm font-medium">{{ 'review.doneTitle' | t }}</p>
+                    </div>
                   }
-                } @empty {
-                  <div class="flex flex-col items-center gap-2 py-6 text-center">
-                    <ng-icon name="lucideCircleCheck" size="2rem" class="text-green-600" />
-                    <p class="text-sm font-medium">{{ 'review.doneTitle' | t }}</p>
-                  </div>
-                }
-                <p class="mt-2 text-xs text-muted-foreground">{{ 'review.clickHint' | t }}</p>
-              </div>
-            </section>
+                  <p class="mt-2 text-xs text-muted-foreground">{{ 'review.clickHint' | t }}</p>
+                </div>
+              </section>
 
-            <!-- editor -->
-            <section class="card p-4 xl:min-h-0 xl:overflow-y-auto">
-              @if (selected(); as rec) {
-                <app-record-editor [record]="rec" [values]="editorValues()" [busy]="busy()" [error]="saveError()"
-                                   [(noteColumn)]="noteColumn" [(noteOpen)]="noteOpen"
-                                   (changed)="edit($event.column, $event.value)" (save)="save()" (skip)="skip()"
-                                   (addNote)="addNote(rec, $event)" (deleteNote)="deleteNote($event)" />
-              } @else {
-                <p class="text-sm text-muted-foreground">{{ 'review.clickHint' | t }}</p>
+              <!-- editor -->
+              <section class="card p-4 xl:min-h-0 xl:overflow-y-auto">
+                @if (selected(); as rec) {
+                  <app-record-editor [record]="rec" [values]="editorValues()" [busy]="busy()" [error]="saveError()"
+                                     [(noteColumn)]="noteColumn" [(noteOpen)]="noteOpen"
+                                     (changed)="edit($event.column, $event.value)" (save)="save()" (skip)="skip()"
+                                     (addNote)="addNote(rec, $event)" (deleteNote)="deleteNote($event)" />
+                } @else {
+                  <p class="text-sm text-muted-foreground">{{ 'review.clickHint' | t }}</p>
+                }
+              </section>
+            </div>
+
+            <!-- viewer -->
+            <section class="card flex min-w-0 flex-col p-4 xl:min-h-0">
+              @if (detail.hasValue()) {
+                <app-pipeline-viewer [slug]="slug()!" [pages]="detail.value().pages" [rows]="viewRows()" [interactive]="true"
+                                     [fill]="true"
+                                     [selectedRow]="selected()?.page === page() ? selected()!.row : null"
+                                     [flagged]="flaggedCells()" [(page)]="page" [(step)]="step"
+                                     (cellClick)="pick($event)" (openSplit)="splitMode.set(true)" />
               }
             </section>
           </div>
-
-          <!-- viewer -->
-          <section class="card flex min-w-0 flex-col p-4 xl:min-h-0">
-            @if (detail.hasValue()) {
-              <app-pipeline-viewer [slug]="slug()!" [pages]="detail.value().pages" [rows]="viewRows()" [interactive]="true"
-                                   [fill]="true"
-                                   [selectedRow]="selected()?.page === page() ? selected()!.row : null"
-                                   [flagged]="flaggedCells()" [(page)]="page" [(step)]="step"
-                                   (cellClick)="pick($event)" />
-            }
-          </section>
-        </div>
+        }
       }
     } @else if (queue.error()) {
       <app-empty-state icon="lucideTriangleAlert" [title]="'common.error' | t">
@@ -140,7 +157,7 @@ const UNDO_MS = 10_000;
     <!-- undo bar -->
     @if (lastSave(); as ls) {
       <div class="fixed bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-4 rounded-lg bg-foreground px-4 py-2 text-sm text-background shadow-lg">
-        {{ 'review.saved' | t: { n: ls.row } }}
+        {{ (ls.row !== undefined ? 'review.saved' : 'review.pageSaved') | t: { n: ls.row ?? ls.page } }}
         <button class="font-semibold underline underline-offset-2" [disabled]="busy()" (click)="undo()">{{ 'review.undo' | t }}</button>
       </div>
     }
@@ -169,11 +186,13 @@ export class ReviewPage {
   });
 
   protected detail = httpResource<DocDetail>(() => (this.slug() ? this.api.docUrl(this.slug()!) : undefined));
-  protected flags = httpResource<FlagOut[]>(() => (this.slug() ? this.api.flagsUrl(this.slug()!) : undefined));
+  protected flags = httpResource<FlagOut[]>(() => (this.slug() ? this.api.allFlagsUrl(this.slug()!) : undefined));
+  protected readonly splitMode = signal(false);
 
   protected readonly records = computed<ReviewRecord[]>(() => {
     const map = new Map<string, ReviewRecord>();
     for (const f of this.flags.hasValue() ? this.flags.value() : []) {
+      if (f.resolved) continue;
       const key = `${f.page}:${f.row}`;
       if (!map.has(key)) map.set(key, { key, page: f.page, row: f.row, flags: [] });
       map.get(key)!.flags.push(f);
@@ -286,6 +305,68 @@ export class ReviewPage {
     if (next) this.select(next);
   }
 
+  private nextPageAfter(currentPage: number): number | null {
+    const pages = this.detail.hasValue() ? this.detail.value().pages : [];
+    const flaggedPages = pages.filter((p) => p.num !== currentPage && p.open_flags > 0);
+    const nextFlagged = flaggedPages.find((p) => p.num > currentPage) ?? flaggedPages[0];
+    if (nextFlagged) return nextFlagged.num;
+    const nextAny = pages.find((p) => p.num > currentPage);
+    return nextAny?.num ?? null;
+  }
+
+  protected skipPage(): void {
+    const next = this.nextPageAfter(this.page());
+    if (next !== null) {
+      this.page.set(next);
+    } else if (this.queue.hasValue()) {
+      const docs = this.queue.value().docs;
+      const idx = docs.findIndex((d) => d.slug === this.slug());
+      const nextDoc = docs[idx + 1] ?? docs.find((d) => d.slug !== this.slug());
+      if (nextDoc) {
+        this.chosen.set(nextDoc.slug);
+        this.page.set(1);
+      }
+    }
+  }
+
+  protected savePage(pageDraft: PageDraft): void {
+    const slug = this.slug(), curPage = this.page();
+    if (!slug || this.busy()) return;
+    const currentRows = this.rows.hasValue() && this.rows.value().num === curPage ? this.rows.value().rows : [];
+    const beforePage: PageDraft = {};
+    for (const idxStr of Object.keys(pageDraft)) {
+      const idx = Number(idxStr);
+      const orig = currentRows.find((r) => r.idx === idx)?.values;
+      if (orig) beforePage[idx] = { ...orig };
+    }
+    const nextFlaggedPage = (this.detail.hasValue() ? this.detail.value().pages : [])
+      .filter((p) => p.num !== curPage && p.open_flags > 0)
+      .sort((a, b) => (a.num > curPage ? -1 : 1) - (b.num > curPage ? -1 : 1) || a.num - b.num)[0]?.num ?? null;
+
+    this.saveError.set(false);
+    this.busy.set(true);
+    this.api.resolvePage(slug, curPage, { rows: pageDraft }).subscribe({
+      next: (res) => {
+        this.busy.set(false);
+        this.offerUndo({ slug, page: curPage, beforePage, flagIds: res.resolved_flag_ids });
+        this.picked.set(null);
+        if (nextFlaggedPage !== null) {
+          this.page.set(nextFlaggedPage);
+        } else {
+          this.selectedKey.set(null);
+          this.draft.set({});
+          this.chosen.set(null);
+        }
+        this.reloadDoc();
+        this.queue.reload();
+      },
+      error: () => {
+        this.busy.set(false);
+        this.saveError.set(true);
+      },
+    });
+  }
+
   private reloadDoc(): void {
     this.flags.reload();
     this.detail.reload();
@@ -353,14 +434,19 @@ export class ReviewPage {
     if (!ls) return;
     clearTimeout(this.undoTimer);
     this.lastSave.set(null);
-    const call = this.api.resolveRow(ls.slug, ls.page, ls.row, { values: ls.before }).pipe(
+    const restore$ = ls.row !== undefined
+      ? this.api.resolveRow(ls.slug, ls.page, ls.row, { values: ls.before ?? {} })
+      : this.api.resolvePage(ls.slug, ls.page, { rows: ls.beforePage ?? {} });
+    const call = restore$.pipe(
       concatMap((res) => (ls.flagIds.length ? this.api.reopenFlags(ls.slug, ls.flagIds) : of(res))),
     );
     this.run(call, () => {
       if (ls.slug !== this.slug()) this.chosen.set(ls.slug);
-      this.selectedKey.set(`${ls.page}:${ls.row}`);
-      this.picked.set({ key: `${ls.page}:${ls.row}`, page: ls.page, row: ls.row, flags: [] });
       this.page.set(ls.page);
+      if (ls.row !== undefined) {
+        this.selectedKey.set(`${ls.page}:${ls.row}`);
+        this.picked.set({ key: `${ls.page}:${ls.row}`, page: ls.page, row: ls.row, flags: [] });
+      }
       this.draft.set({});
     });
   }

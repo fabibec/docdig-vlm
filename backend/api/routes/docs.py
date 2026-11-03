@@ -18,6 +18,7 @@ from backend.api.schemas import (
     FlagOut,
     PageInfo,
     PageRows,
+    PageUpdate,
     ResolveOut,
     RowOut,
     RowUpdate,
@@ -127,6 +128,41 @@ async def resolve_row(slug: str, num: int, idx: int, body: RowUpdate, session: A
 
     flags = (await session.exec(select(Flag).where(Flag.doc_id == doc.id, Flag.page_num == num,
                                                    Flag.row_idx == idx, Flag.resolved == False))).all()
+    for f in flags:
+        f.resolved = True
+    await session.flush()
+    await refresh_doc_flags(session, doc)
+    await session.commit()
+
+    await hub.broadcast(*await doc_events(session, doc))
+    await store.after_review(doc.rel_dir)
+    return ResolveOut(doc=doc_out(doc), resolved_flag_ids=[f.id for f in flags])
+
+
+@router.post("/{slug}/page/{num}/resolve", response_model=ResolveOut)
+async def resolve_page(slug: str, num: int, body: PageUpdate, session: AsyncSession = Depends(get_session)):
+    """Save all modified rows on a page and resolve all open flags of that page."""
+    doc = await _doc(session, slug)
+    page = await _page(session, doc, num)
+    if not page:
+        raise HTTPException(404, "page not processed")
+
+    rows_by_idx = {r.idx: r for r in await _rows(session, page)}
+    for idx, changes in body.rows.items():
+        row = rows_by_idx.get(idx)
+        if not row:
+            raise HTTPException(404, f"row {idx} not found")
+        corrections = dict(row.corrections)
+        for key, value in changes.items():
+            value = value.strip()
+            if value == row.values.get(key.value, ""):
+                corrections.pop(key.value, None)
+            else:
+                corrections[key.value] = value
+        row.corrections = corrections
+
+    flags = (await session.exec(select(Flag).where(Flag.doc_id == doc.id, Flag.page_num == num,
+                                                   Flag.resolved == False))).all()
     for f in flags:
         f.resolved = True
     await session.flush()
