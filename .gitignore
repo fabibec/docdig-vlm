@@ -9,6 +9,7 @@ models
 !models/prompt.txt
 !backend/pipeline/models
 data/web
+llama-server.log
 
 # web app volume (state + artifacts)
 data/state/

@@ -1,43 +1,136 @@
-from PIL import Image
+import atexit
+import base64
+import logging
+import os
+import socket
+import subprocess
+import time
+from pathlib import Path
 
-from backend.pipeline.directories import PROJECT_ROOT, PROMPT_DIR
+import httpx
+from huggingface_hub import hf_hub_download
+
 from backend.pipeline.models.pipeline_parts import PipelineStep, PipelineTask, page_stem
 from backend.pipeline.settings import settings
 
+log = logging.getLogger(__name__)
+
+PROMPT = (
+    "\nExtract all readable content from the image in natural human reading order and output the result "
+    "as a single Markdown document. For charts or images, represent them using an HTML image tag: <"
+    + 'img src="images/bbox_{left}_{top}_{right}_{bottom}.jpg" />, where left, top, right, bottom are '
+    "bounding box coordinates scaled to [0, 1000). Format formulas as LaTeX. Format tables as HTML: "
+    "<table>...</table>. Transcribe all other text as standard Markdown. "
+    "Preserve the original text without translation or paraphrasing."
+)
+
+
+def _download_models() -> tuple[Path, Path]:
+    """Download the GGUFs (cached; skipped if already present)."""
+    settings.model_cache_dir.mkdir(parents=True, exist_ok=True)
+    token = settings.hf_token or os.environ.get("HF_TOKEN")
+    return (
+        Path(
+            hf_hub_download(settings.ocr_model, settings.ocr_llm_file, local_dir=settings.model_cache_dir, token=token)
+        ),
+        Path(
+            hf_hub_download(
+                settings.ocr_model, settings.ocr_mmproj_file, local_dir=settings.model_cache_dir, token=token
+            )
+        ),
+    )
+
+
+def _free_port() -> int:
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
 
 class OcrExtractor(PipelineStep):
-    """Optional local OCR on ``cropped/`` -> ``ocr/pNNN.md``. Needs the ``ocr`` dependency group."""
+    """Optional local OCR on ``cropped/`` -> ``ocr/pNNN.md`` via a llama.cpp server."""
 
     name = "ocr"
 
     def setup(self):
-        from vllm import LLM
+        self.proc = None
+        self.client = None
 
-        self.model = LLM(
-            model=settings.ocr_model,
-            tensor_parallel_size=1,
-            gpu_memory_utilization=0.8,
-            gdn_prefill_backend="triton",
-            max_num_seqs=1,
-            max_num_batched_tokens=4096,
-            download_dir=str(PROJECT_ROOT / "models"),
-        )
+        external = os.environ.get("OCR_SERVER_URL")
+        if external:
+            self.base_url = external.rstrip("/")
+        else:
+            self._start_server()
 
-        with (PROMPT_DIR / "ocr_prompt.txt").open("r") as f:
-            prompt = f.read()
+        self.client = httpx.Client(base_url=self.base_url, timeout=900)
+        atexit.register(self.close)  # safety net if close() is never called
 
-        self.prompt = self.model.get_tokenizer().apply_chat_template(
-            [
-                {
-                    "role": "user",
-                    "content": [{"type": "image"}, {"type": "text", "text": prompt}],
-                }
-            ],
-            tokenize=False,
-            add_generation_prompt=True,
-            enable_thinking=False,
-        )
+    def close(self):
+        if getattr(self, "client", None):
+            self.client.close()
+            self.client = None
+        proc = getattr(self, "proc", None)
+        if proc and proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+        self.proc = None
+        if getattr(self, "_log", None):
+            self._log.close()
+            self._log = None
 
+    def _start_server(self):
+        llm, mmproj = _download_models()
+        port = _free_port()
+        self.base_url = f"http://127.0.0.1:{port}"
+
+        env = os.environ.copy()
+        env["LD_LIBRARY_PATH"] = f"{settings.llama_cpp_dir}:{env.get('LD_LIBRARY_PATH', '')}"
+
+        cmd = [
+            str(settings.llama_cpp_bin),
+            "-m",
+            str(llm),
+            "--mmproj",
+            str(mmproj),
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+            "-ngl",
+            "99",
+            "-c",
+            str(settings.ocr_ctx_size),
+            "--parallel",
+            "1",
+            "--image-min-tokens",
+            str(settings.ocr_image_min_tokens),
+            "--image-max-tokens",
+            str(settings.ocr_image_max_tokens),
+            "--jinja",
+        ]
+        log.info("Starting llama-server: %s", " ".join(cmd))
+        self._log = settings.llama_cpp_log_file.open("w")
+        self.proc = subprocess.Popen(cmd, env=env, stdout=self._log, stderr=subprocess.STDOUT)
+
+        deadline = time.monotonic() + 300
+        while time.monotonic() < deadline:
+            if self.proc.poll() is not None:
+                raise RuntimeError(f"llama-server exited early, see {settings.llama_cpp_log_file}")
+            try:
+                if httpx.get(f"{self.base_url}/health", timeout=2).status_code == 200:
+                    return
+            except httpx.TransportError:
+                pass
+            time.sleep(0.5)
+
+        self.teardown()
+        raise RuntimeError(f"llama-server not ready after 300s, see {settings.llama_cpp_log_file}")
+
+    @staticmethod
     def _clean_truncated_repeats(
         text: str,
         min_text_len: int = 8000,
@@ -70,37 +163,38 @@ class OcrExtractor(PipelineStep):
 
         return text
 
+    def _ocr_image(self, img_file: Path) -> str:
+        b64 = base64.b64encode(img_file.read_bytes()).decode()
+        resp = self.client.post(
+            "/v1/chat/completions",
+            json={
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+                            {"type": "text", "text": PROMPT},
+                        ],
+                    }
+                ],
+                "max_tokens": settings.ocr_max_output_tokens,
+                "temperature": 0.0,
+                "chat_template_kwargs": {"enable_thinking": False},
+            },
+        )
+        resp.raise_for_status()
+        choice = resp.json()["choices"][0]
+        if choice["finish_reason"] == "length":
+            log.warning("%s hit max_tokens, output is truncated", img_file.name)
+        text = self._clean_truncated_repeats(choice["message"]["content"].strip())
+        return text
+
     def execute(self, task: PipelineTask):
         input_dir = task.step_dir("cropped")
         output_dir = task.step_dir(self.name)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         img_files = [input_dir / f"{page_stem(n)}.jpg" for n in task.page_nums("cropped")]
-        images = [Image.open(fname).convert("RGB") for fname in img_files]
-
-        vllm_inputs = [
-            {
-                "prompt": self.prompt,
-                "multi_modal_data": {"image": image},
-                "mm_processor_kwargs": {
-                    "images_kwargs": {
-                        "min_pixels": 448 * 448,
-                        "max_pixels": 2880 * 2880,
-                    }
-                },
-            }
-            for image in images
-        ]
-
-        outputs = self.model.generate(vllm_inputs)
-
-        markdowns = []
-        for output in outputs:
-            text = output.outputs[0].text.strip()
-            text = OcrExtractor._clean_truncated_repeats(text)
-            markdowns.append(text)
-
-        for img_file, md in zip(img_files, markdowns, strict=True):
-            out_file = output_dir / f"{img_file.stem}.md"
-            with out_file.open("w", encoding="utf-8") as f:
-                f.write(md)
+        for img_file in img_files:
+            md = self._ocr_image(img_file)
+            (output_dir / f"{img_file.stem}.md").write_text(md, encoding="utf-8")
