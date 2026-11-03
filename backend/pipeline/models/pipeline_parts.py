@@ -62,6 +62,9 @@ class PipelineStep(ABC):
     def setup(self) -> None:
         """Load models etc. Called once per process."""
 
+    def close(self) -> None:
+        """Release resources opened in ``setup``. Called once per process."""
+
     @abstractmethod
     def execute(self, task: PipelineTask) -> None: ...
 
@@ -74,10 +77,22 @@ class Pipeline:
         self.steps.append(step)
         return self
 
-    def setup(self) -> Pipeline:
+    def setup(self, only: list[str] | None = None) -> Pipeline:
         for step in self.steps:
-            step.setup()
+            if only is None or step.name in only:
+                step.setup()
         return self
+
+    def close(self, only: list[str] | None = None) -> None:
+        for step in self.steps:
+            if only is None or step.name in only:
+                step.close()
+
+    def __enter__(self) -> Pipeline:
+        return self.setup()
+
+    def __exit__(self, *exc) -> None:
+        self.close()
 
     def run(self, task: PipelineTask, only: list[str] | None = None) -> DocResult:
         """Run all steps (or only the named ones) and collect what's on disk."""

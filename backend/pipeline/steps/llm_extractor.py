@@ -25,6 +25,7 @@ class LlmExtractor(PipelineStep):
     def setup(self):
         ctx = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 
+        self.runner = asyncio.Runner()
         self.client = AsyncOpenAI(
             base_url=str(settings.llm_api_url),
             api_key=settings.llm_api_key,
@@ -40,6 +41,10 @@ class LlmExtractor(PipelineStep):
 
         with settings.llm_prompt_file.open("r", encoding="utf-8") as f:
             self.prompt = f.read()
+
+    def close(self):
+        self.runner.run(self.client.close())
+        self.runner.close()
 
     @staticmethod
     def _encode_image(path, mime="image/jpeg", detail="high"):
@@ -113,4 +118,4 @@ class LlmExtractor(PipelineStep):
 
     def execute(self, task: PipelineTask):
         task.step_dir(self.name).mkdir(parents=True, exist_ok=True)
-        asyncio.run(self._run_all(task, task.page_nums("cropped")))
+        self.runner.run(self._run_all(task, task.page_nums("cropped")))

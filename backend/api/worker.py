@@ -1,5 +1,6 @@
 """Code that runs inside the pool processes. Imports only the pipeline (no DB, no FastAPI)."""
 
+import atexit
 import logging
 import multiprocessing as mp
 from pathlib import Path
@@ -16,6 +17,7 @@ def init_worker(progress_queue: "mp.Queue") -> None:
     logging.basicConfig(level=logging.INFO, format="%(processName)s %(levelname)s %(message)s")
     _progress = progress_queue
     _pipeline = build_pipeline().setup()
+    atexit.register(_pipeline.close)
 
 
 def run_doc(doc_id: int, input_pdf: str, out_dir: str) -> str:

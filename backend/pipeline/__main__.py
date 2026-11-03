@@ -33,19 +33,18 @@ def cmd_run(args: argparse.Namespace) -> int:
         return 1
 
     steps = args.steps or STEP_NAMES
-    pipeline = build_pipeline(draw_rows=args.draw_rows, ocr="ocr" in steps)
     # Only set up what runs (the LLM step needs API credentials, OCR a GPU).
-    for step in pipeline.steps:
-        if step.name in steps:
-            step.setup()
-
-    for pdf in pdfs:
-        out = args.output / pdf.stem
-        print(f"{pdf} -> {out}")
-        t0 = time.perf_counter()
-        task = PipelineTask(input_pdf=pdf, output_directory=out, pages=args.page, on_progress=_progress)
-        result = pipeline.run(task, only=steps)
-        print(f"  done in {time.perf_counter() - t0:.1f}s, {len(result.pages)} page(s) complete")
+    pipeline = build_pipeline(draw_rows=args.draw_rows, ocr="ocr" in steps).setup(only=steps)
+    try:
+        for pdf in pdfs:
+            out = args.output / pdf.stem
+            print(f"{pdf} -> {out}")
+            t0 = time.perf_counter()
+            task = PipelineTask(input_pdf=pdf, output_directory=out, pages=args.page, on_progress=_progress)
+            result = pipeline.run(task, only=steps)
+            print(f"  done in {time.perf_counter() - t0:.1f}s, {len(result.pages)} page(s) complete")
+    finally:
+        pipeline.close(only=steps)
     return 0
 
 
