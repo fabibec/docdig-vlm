@@ -21,6 +21,7 @@
   - In the end we can cut by table cell and get the digits/letters back
 - OP 9:csv-export? instead of md?
 - OP 10: Benchmark improvements
+- OP 11: Detect rotated pdfs
 
 ## Future Ideas
 - User Concept (Login, Azure AD to allow SSO?)
@@ -30,7 +31,7 @@
 - Cost Breakdown (per User, also maybe show per Page) as Admin View
 - Use OpenAI Batch API to reduce LLM costs (~50% for a max wait time of 24h)
 - Stats View
-- Test/Finetune Local OCR Model/LLM
+- Test/Finetune Local OCR Model/LLM or train digit/letter recognizer?
 - Add automated tests
 - Should the results also be added into a different database?
 - Logging

@@ -83,6 +83,8 @@ class OcrExtractor(PipelineStep):
             self._log = None
 
     def _start_server(self):
+        if not settings.llama_cpp_bin.is_file():
+            raise FileNotFoundError(f"llama-server binary not found at {settings.llama_cpp_bin} (set LLAMA_CPP_BIN)")
         llm, mmproj = _download_models()
         port = _free_port()
         self.base_url = f"http://127.0.0.1:{port}"

@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import csv
 import ssl
 
 import truststore
@@ -92,7 +93,7 @@ class LlmExtractor(PipelineStep):
             table=msg.parsed,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
-            estimated_cost=round(price_data.total_price, 3),
+            estimated_cost=round(price_data.total_price, 6),
         )
 
     async def _run_all(self, task: PipelineTask, nums: list[int]):
@@ -107,10 +108,18 @@ class LlmExtractor(PipelineStep):
             (out_dir / f"{page_stem(num)}.json").write_text(
                 result.model_dump_json(indent=2, ensure_ascii=False), encoding="utf-8"
             )
+
+            rows = result.table.model_dump()["rows"]
             (out_dir / f"{page_stem(num)}.md").write_text(
-                tabulate(result.table.model_dump()["rows"], headers="keys", tablefmt="pipe", disable_numparse=True),
+                tabulate(rows, headers="keys", tablefmt="pipe", disable_numparse=True),
                 encoding="utf-8",
             )
+
+            with open(out_dir / f"{page_stem(num)}.csv", "w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=rows[0].keys())
+                writer.writeheader()
+                writer.writerows(rows)
+
             done += 1
             task.report(self.name, done, len(nums))
 
