@@ -18,3 +18,10 @@ benchmark/cache/
 benchmark/results/
 data/logs/
 .claude/worktrees/
+
+# test / coverage output
+.coverage
+.coverage.*
+coverage.xml
+report.xml
+htmlcov/
