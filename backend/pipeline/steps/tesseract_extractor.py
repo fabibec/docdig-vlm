@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import logging
 import shutil
+import time
 from dataclasses import dataclass
 from itertools import pairwise
 from pathlib import Path
@@ -12,6 +14,8 @@ from tabulate import tabulate
 
 from backend.pipeline.models.pipeline_parts import PipelineStep, PipelineTask, page_stem
 from backend.pipeline.models.results import PageGeometry
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -178,12 +182,33 @@ class TesseractExtractor(PipelineStep):
         out_dir = task.step_dir(self.name)
         out_dir.mkdir(parents=True, exist_ok=True)
 
+        pdf = task.input_pdf.name
         nums = task.page_nums("cropped")
+        start = time.perf_counter()
         for i, num in enumerate(nums, 1):
+            page_start = time.perf_counter()
             stem = page_stem(num)
             geom = PageGeometry.model_validate_json((cropped_dir / f"{stem}.geom.json").read_text("utf-8"))
             cells_dir = (out_dir / "cells" / stem) if self.save_cells else None
             rows = self.extract_page(cropped_dir / f"{stem}.jpg", geom, cells_dir=cells_dir)
             md = tabulate(rows, headers="keys", tablefmt="pipe", disable_numparse=True)
             (out_dir / f"{stem}.md").write_text(md, encoding="utf-8")
+            duration_ms = round((time.perf_counter() - page_start) * 1000)
+            log.debug(
+                "Tesseract page %d of %s: %d rows x %d cols in %d ms",
+                num,
+                pdf,
+                len(rows),
+                len(geom.col_bounds) - 1,
+                duration_ms,
+                extra={"pdf": pdf, "step": self.name, "page": num, "rows": len(rows), "duration_ms": duration_ms},
+            )
             task.report(self.name, i, len(nums))
+        duration_ms = round((time.perf_counter() - start) * 1000)
+        log.info(
+            "Tesseract OCR done for %d page(s) of %s in %d ms",
+            len(nums),
+            pdf,
+            duration_ms,
+            extra={"pdf": pdf, "step": self.name, "pages": len(nums), "duration_ms": duration_ms},
+        )

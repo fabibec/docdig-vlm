@@ -29,7 +29,17 @@ def _download_models() -> tuple[Path, Path]:
     """Download the GGUFs (cached; skipped if already present)."""
     settings.model_cache_dir.mkdir(parents=True, exist_ok=True)
     token = settings.hf_token or os.environ.get("HF_TOKEN")
-    return (
+    ctx = {"model": settings.ocr_model, "cache_dir": str(settings.model_cache_dir)}
+    log.info(
+        "Fetching OCR model %s (%s, %s) into %s",
+        settings.ocr_model,
+        settings.ocr_llm_file,
+        settings.ocr_mmproj_file,
+        settings.model_cache_dir,
+        extra=ctx,
+    )
+    start = time.perf_counter()
+    paths = (
         Path(
             hf_hub_download(settings.ocr_model, settings.ocr_llm_file, local_dir=settings.model_cache_dir, token=token)
         ),
@@ -39,6 +49,11 @@ def _download_models() -> tuple[Path, Path]:
             )
         ),
     )
+    duration_ms = round((time.perf_counter() - start) * 1000)
+    log.info(
+        "OCR model %s ready after %d ms", settings.ocr_model, duration_ms, extra={**ctx, "duration_ms": duration_ms}
+    )
+    return paths
 
 
 def _free_port() -> int:
@@ -59,6 +74,7 @@ class OcrExtractor(PipelineStep):
         external = os.environ.get("OCR_SERVER_URL")
         if external:
             self.base_url = external.rstrip("/")
+            log.info("Using external OCR server at %s", self.base_url, extra={"step": self.name})
         else:
             self._start_server()
 
@@ -71,10 +87,14 @@ class OcrExtractor(PipelineStep):
             self.client = None
         proc = getattr(self, "proc", None)
         if proc and proc.poll() is None:
+            log.info("Stopping llama-server (pid %d)", proc.pid, extra={"step": self.name, "pid": proc.pid})
             proc.terminate()
             try:
                 proc.wait(timeout=15)
             except subprocess.TimeoutExpired:
+                log.warning(
+                    "llama-server did not stop within 15s, killing it", extra={"step": self.name, "pid": proc.pid}
+                )
                 proc.kill()
                 proc.wait()
         self.proc = None
@@ -114,22 +134,43 @@ class OcrExtractor(PipelineStep):
             str(settings.ocr_image_max_tokens),
             "--jinja",
         ]
-        log.info("Starting llama-server: %s", " ".join(cmd))
+        ctx = {"step": self.name, "port": port, "model_file": llm.name}
+        log.info(
+            "Starting llama-server on port %d with model %s (mmproj %s), log: %s",
+            port,
+            llm.name,
+            mmproj.name,
+            settings.llama_cpp_log_file,
+            extra=ctx,
+        )
+        log.debug("llama-server command: %s", " ".join(cmd), extra=ctx)
         self._log = settings.llama_cpp_log_file.open("w")
         self.proc = subprocess.Popen(cmd, env=env, stdout=self._log, stderr=subprocess.STDOUT)
 
-        deadline = time.monotonic() + 300
+        start = time.monotonic()
+        deadline = start + 300
         while time.monotonic() < deadline:
             if self.proc.poll() is not None:
+                self.close()
                 raise RuntimeError(f"llama-server exited early, see {settings.llama_cpp_log_file}")
             try:
                 if httpx.get(f"{self.base_url}/health", timeout=2).status_code == 200:
+                    duration_ms = round((time.monotonic() - start) * 1000)
+                    log.info(
+                        "llama-server ready on port %d after %d ms",
+                        port,
+                        duration_ms,
+                        extra={**ctx, "duration_ms": duration_ms},
+                    )
                     return
             except httpx.TransportError:
                 pass
             time.sleep(0.5)
 
-        self.teardown()
+        log.warning(
+            "llama-server not ready after 300s, shutting it down (see %s)", settings.llama_cpp_log_file, extra=ctx
+        )
+        self.close()
         raise RuntimeError(f"llama-server not ready after 300s, see {settings.llama_cpp_log_file}")
 
     @staticmethod
@@ -187,7 +228,7 @@ class OcrExtractor(PipelineStep):
         resp.raise_for_status()
         choice = resp.json()["choices"][0]
         if choice["finish_reason"] == "length":
-            log.warning("%s hit max_tokens, output is truncated", img_file.name)
+            log.warning("%s hit max_tokens, output is truncated", img_file.name, extra={"file": img_file.name})
         text = self._clean_truncated_repeats(choice["message"]["content"].strip())
         return text
 
@@ -196,7 +237,20 @@ class OcrExtractor(PipelineStep):
         output_dir = task.step_dir(self.name)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        img_files = [input_dir / f"{page_stem(n)}.jpg" for n in task.page_nums("cropped")]
-        for img_file in img_files:
+        pdf = task.input_pdf.name
+        nums = task.page_nums("cropped")
+        for num in nums:
+            img_file = input_dir / f"{page_stem(num)}.jpg"
+            start = time.perf_counter()
             md = self._ocr_image(img_file)
             (output_dir / f"{img_file.stem}.md").write_text(md, encoding="utf-8")
+            duration_ms = round((time.perf_counter() - start) * 1000)
+            log.debug(
+                "OCR page %d of %s: %d chars in %d ms",
+                num,
+                pdf,
+                len(md),
+                duration_ms,
+                extra={"pdf": pdf, "step": self.name, "page": num, "duration_ms": duration_ms},
+            )
+        log.info("OCR done for %d page(s) of %s", len(nums), pdf, extra={"pdf": pdf, "step": self.name})
