@@ -1,5 +1,6 @@
 """Read helpers that turn DB rows into API schemas. Shared by routes and processing."""
 
+import logging
 from datetime import UTC, datetime
 
 from sqlalchemy import func
@@ -18,6 +19,8 @@ from backend.api.schemas import (
     ReviewEvent,
     StatusCounts,
 )
+
+log = logging.getLogger(__name__)
 
 
 def utc(dt: datetime) -> datetime:
@@ -93,9 +96,18 @@ async def refresh_doc_flags(session: AsyncSession, doc: Doc) -> None:
     open_flags = (
         await session.exec(select(func.count()).select_from(Flag).where(Flag.doc_id == doc.id, Flag.resolved == False))
     ).one()
+    old_status = doc.status
     doc.open_flags = open_flags
     doc.status = DocStatus.review if open_flags else DocStatus.done
     doc.updated_at = datetime.now(UTC)
+    log.debug(
+        "doc %s: %d open flags, status %s -> %s",
+        doc.slug,
+        open_flags,
+        old_status,
+        doc.status,
+        extra={"doc": doc.slug},
+    )
 
 
 # ---------- events ----------

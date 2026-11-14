@@ -1,3 +1,4 @@
+import logging
 import shutil
 from datetime import UTC, date, datetime
 from pathlib import PurePath
@@ -18,6 +19,8 @@ from backend.api.queries import batch_outs, doc_out, review_stats
 from backend.api.schemas import BatchEvent, BatchOut, BatchUpdate, DocOut, DuplicateFiles, Paginated, ReviewEvent
 from backend.api.storage import FileTooLarge, slugify, store
 
+log = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/batches", tags=["batches"])
 
 PageNum = Query(1, ge=1)
@@ -27,6 +30,7 @@ PageSize = Query(10, ge=1, le=100)
 async def _batch(session: AsyncSession, slug: str) -> Batch:
     batch = (await session.exec(select(Batch).where(Batch.slug == slug, Batch.deleted_at.is_(None)))).first()
     if not batch:
+        log.debug("batch %s not found", slug, extra={"batch": slug})
         raise HTTPException(404, "batch not found")
     return batch
 
@@ -53,8 +57,10 @@ async def create_batch(
 ):
     filenames = [PurePath(f.filename or "").name for f in files]
     if bad := [n for n in filenames if not n.lower().endswith(".pdf")]:
+        log.warning("rejected upload %r: non-PDF files %s", name, bad, extra={"files": bad})
         raise HTTPException(422, f"only PDF files are accepted: {bad}")
     if dupes := sorted({n for n in filenames if filenames.count(n) > 1}):
+        log.warning("rejected upload %r: duplicate files %s", name, dupes, extra={"files": dupes})
         return JSONResponse(DuplicateFiles(filenames=dupes).model_dump(), status_code=409)
 
     slug = await _unique_slug(session, Batch, f"{date.today():%Y%m%d}-{slugify(name) or 'batch'}")
@@ -74,24 +80,36 @@ async def create_batch(
     session.add_all(docs)
 
     by_name = {PurePath(f.filename or "").name: f for f in files}
+    total_bytes = 0
     try:
         for doc in docs:
-            await store.save_upload(
+            path = await store.save_upload(
                 by_name[doc.filename], f"{slug}/{doc.slug}", doc.filename, settings.max_upload_mb * 1024 * 1024
             )
+            total_bytes += path.stat().st_size
         await session.commit()  # docs become visible only after their files are on disk
     except FileTooLarge as exc:
         await session.rollback()
         shutil.rmtree(store.doc_dir(slug), ignore_errors=True)
         raise HTTPException(413, f"{exc} exceeds {settings.max_upload_mb} MB") from None
-    except BaseException:
+    except BaseException as exc:
         await session.rollback()
         shutil.rmtree(store.doc_dir(slug), ignore_errors=True)
+        log.warning("upload into batch %s aborted (%r), rolled back", slug, exc, extra={"batch": slug})
         raise
 
     for doc in docs:
         await store.after_upload(f"{slug}/{doc.slug}")
     processor.enqueue([d.id for d in docs])
+    log.info(
+        "created batch %s (%r) with %d files, %.2f MB, owner %s",
+        slug,
+        batch.name,
+        len(docs),
+        total_bytes / (1024 * 1024),
+        user.name,
+        extra={"batch": slug, "n_files": len(docs), "bytes": total_bytes},
+    )
 
     (out,) = await batch_outs(session, [batch])
     files_left, flags_left = await review_stats(session)
@@ -113,6 +131,7 @@ async def list_batches(page: int = PageNum, size: int = PageSize, session: Async
             .limit(size)
         )
     ).all()
+    log.debug("listing batches page %d (size %d): %d of %d", page, size, len(batches), total)
     return Paginated[BatchOut](items=await batch_outs(session, list(batches)), total=total, page=page, size=size)
 
 
@@ -125,8 +144,10 @@ async def get_batch(slug: str, session: AsyncSession = Depends(get_session)):
 @router.patch("/{slug}", response_model=BatchOut)
 async def update_batch(slug: str, body: BatchUpdate, session: AsyncSession = Depends(get_session)):
     batch = await _batch(session, slug)
+    old_name = batch.name
     batch.name = body.name.strip()
     await session.commit()
+    log.info("renamed batch %s: %r -> %r", slug, old_name, batch.name, extra={"batch": slug})
     (out,) = await batch_outs(session, [batch])
     await hub.broadcast(BatchEvent(type="batch.updated", batch=out))
     return out
@@ -138,6 +159,7 @@ async def delete_batch(slug: str, session: AsyncSession = Depends(get_session)):
     (out,) = await batch_outs(session, [batch])
     batch.deleted_at = datetime.now(UTC)
     await session.commit()
+    log.info("soft-deleted batch %s (%r, %d docs)", slug, batch.name, out.num_docs, extra={"batch": slug})
     files_left, flags_left = await review_stats(session)
     await hub.broadcast(
         BatchEvent(type="batch.deleted", batch=out), ReviewEvent(files_left=files_left, flags_left=flags_left)
@@ -156,4 +178,5 @@ async def list_docs(slug: str, page: int = PageNum, size: int = PageSize, sessio
     ).all()
     for d in docs:
         d.batch = batch
+    log.debug("listing docs of batch %s page %d: %d of %d", slug, page, len(docs), total, extra={"batch": slug})
     return Paginated[DocOut](items=[doc_out(d) for d in docs], total=total, page=page, size=size)

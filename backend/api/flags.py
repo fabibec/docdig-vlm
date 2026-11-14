@@ -6,6 +6,7 @@ Rule flags carry a ``code`` + ``params`` (translated in the frontend) and an Eng
 
 import logging
 import re
+from collections import Counter
 
 from backend.api.enums import ColumnKey, FlagSource, Severity
 from backend.pipeline.models.llm_responses import TableRow, Uncertainty
@@ -52,13 +53,20 @@ def row_values(row: TableRow) -> dict[str, str]:
     return {c.value: (getattr(row, c.value) or "").strip() for c in ColumnKey}
 
 
-def _llm_flag(u: Uncertainty) -> dict | None:
+def _llm_flag(u: Uncertainty, page_num: int | None = None) -> dict | None:
     if u.row_number is None:
-        log.info("skipping uncertainty without row: %s", u.reason)
+        log.info("skipping uncertainty without row: %s", u.reason, extra={"page": page_num})
         return None
+    column = column_for(u.column)
+    if column is None and u.column.strip():
+        log.warning(
+            "unmapped LLM column header %r; flag has no column",
+            u.column,
+            extra={"page": page_num, "row": u.row_number},
+        )
     return dict(
         row_idx=u.row_number,
-        column=column_for(u.column),
+        column=column,
         source=FlagSource.llm,
         severity=Severity.warning,
         message=u.reason,
@@ -119,9 +127,18 @@ def _rule_flags(idx: int, values: dict[str, str]) -> list[dict]:
 
 def make_flags(page: PageResult) -> list[dict]:
     """Flag kwargs (without doc_id/page_num) for one page."""
-    flags = [f for u in page.table.uncertainties if (f := _llm_flag(u))]
+    flags = [f for u in page.table.uncertainties if (f := _llm_flag(u, page.num))]
     for row in page.table.rows:
         values = row_values(row)
         if any(values.values()):
             flags += _rule_flags(row.row_number, values)
+    if log.isEnabledFor(logging.DEBUG):
+        by_source = dict(sorted(Counter(f["source"].value for f in flags).items()))
+        log.debug(
+            "built %d flags for page %d: %s",
+            len(flags),
+            page.num,
+            by_source,
+            extra={"page": page.num, "flags_by_source": by_source},
+        )
     return flags

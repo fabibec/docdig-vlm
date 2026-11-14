@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import selectinload
 from sqlmodel import select
@@ -8,6 +10,8 @@ from backend.api.enums import DocStatus
 from backend.api.models import Batch, Doc
 from backend.api.queries import get_doc, review_stats
 from backend.api.schemas import ReviewItem, ReviewQueue
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/review", tags=["review"])
 
@@ -42,8 +46,16 @@ async def review_queue(
 
     docs = (await session.exec(q)).all()
     files_left, flags_left = await review_stats(session, batch_id=batch_id, doc_id=doc_id)
+    scope = "doc" if doc else "batch" if batch else "all"
+    log.debug(
+        "review queue (%s): %d docs, %d open flags",
+        scope,
+        len(docs),
+        flags_left,
+        extra={k: v for k, v in (("batch", batch), ("doc", doc)) if v},
+    )
     return ReviewQueue(
-        scope="doc" if doc else "batch" if batch else "all",
+        scope=scope,
         files_left=files_left,
         flags_left=flags_left,
         docs=[
