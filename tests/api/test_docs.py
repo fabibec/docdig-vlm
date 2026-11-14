@@ -302,7 +302,7 @@ def test_reopen_unknown_flag_is_404(api, factory):
 
 def test_rename_doc_renames_file_on_disk(api, factory):
     batch = factory.batch(slug="b")
-    doc = factory.doc(batch, "old.pdf")
+    doc = factory.doc(batch, "old.pdf", status=DocStatus.done)
     input_dir = api.batches_dir / "b" / doc.slug / "input"
     content = (input_dir / "old.pdf").read_bytes()
 
@@ -327,22 +327,22 @@ def test_rename_doc_renames_file_on_disk(api, factory):
     ],
 )
 def test_rename_doc_normalises_filename(api, factory, given, stored):
-    doc = factory.doc(factory.batch(slug="b"), "old.pdf")
+    doc = factory.doc(factory.batch(slug="b"), "old.pdf", status=DocStatus.done)
     res = api.client.patch(f"/api/docs/{doc.slug}", json={"filename": given})
     assert res.status_code == 200
     assert res.json()["filename"] == stored
     assert (api.batches_dir / "b" / doc.slug / "input" / stored).is_file()
 
 
-@pytest.mark.parametrize("name", ["", ".pdf", "   ", "/", "a/.pdf"])
+@pytest.mark.parametrize("name", ["", ".pdf", "   ", "/", "a/.pdf", "..", "../"])
 def test_rename_doc_rejects_invalid_names(api, factory, name):
-    doc = factory.doc(factory.batch(), "old.pdf")
+    doc = factory.doc(factory.batch(), "old.pdf", status=DocStatus.done)
     assert api.client.patch(f"/api/docs/{doc.slug}", json={"filename": name}).status_code == 422
 
 
 def test_rename_doc_to_taken_name_is_409_only_within_batch(api, factory):
     batch = factory.batch()
-    a = factory.doc(batch, "a.pdf")
+    a = factory.doc(batch, "a.pdf", status=DocStatus.done)
     factory.doc(batch, "b.pdf")
     factory.doc(factory.batch(), "c.pdf")
 
@@ -351,6 +351,17 @@ def test_rename_doc_to_taken_name_is_409_only_within_batch(api, factory):
     assert "already exists" in taken.json()["detail"]
     assert api.client.patch(f"/api/docs/{a.slug}", json={"filename": "c.pdf"}).status_code == 200
     assert api.client.patch(f"/api/docs/{a.slug}", json={"filename": "c.pdf"}).status_code == 200  # same name
+
+
+@pytest.mark.parametrize("status", [DocStatus.queued, DocStatus.processing])
+def test_rename_doc_is_409_while_processing(api, factory, status):
+    batch = factory.batch(slug="b")
+    doc = factory.doc(batch, "old.pdf", status=status)
+
+    res = api.client.patch(f"/api/docs/{doc.slug}", json={"filename": "new.pdf"})
+
+    assert res.status_code == 409
+    assert (api.batches_dir / "b" / doc.slug / "input" / "old.pdf").is_file()
 
 
 # ---------- files ----------
