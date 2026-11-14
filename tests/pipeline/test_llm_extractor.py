@@ -66,7 +66,7 @@ def cropped_task(make_task):
 
 
 def fake_extraction(cost: float = 0.01, n_rows: int = 2, seen: list | None = None):
-    async def run(image):
+    async def run(image, ctx=None):
         if seen is not None:
             seen.append(image)
         return ExtractionResult(
@@ -141,11 +141,6 @@ def test_execute_without_crops_writes_nothing(extractor, make_task, monkeypatch)
     assert list(task.step_dir("processed").iterdir()) == []
 
 
-@pytest.mark.xfail(
-    raises=IndexError,
-    strict=True,
-    reason="bug: llm_extractor builds the CSV header from rows[0]; use list(TableRow.model_fields) instead",
-)
 def test_page_with_no_rows_writes_header_only_csv(extractor, cropped_task, monkeypatch):
     monkeypatch.setattr(extractor, "_llm_extraction", fake_extraction(n_rows=0))
     cropped_task.pages = [1]
@@ -177,7 +172,7 @@ def test_concurrency_limit_is_respected(extractor, make_task, monkeypatch):
     state = {"now": 0, "max": 0}
     inner = fake_extraction()
 
-    async def slow(image):
+    async def slow(image, ctx=None):
         state["now"] += 1
         state["max"] = max(state["max"], state["now"])
         await asyncio.sleep(0.01)
@@ -250,8 +245,8 @@ def test_llm_extraction_builds_request_and_prices_tokens(extractor, cropped_task
 
     assert result.source == "openai/gpt-4o"
     assert result.table == table()
-    assert (result.input_tokens, result.output_tokens) == (1000, 500)  # reasoning tokens count as output
-    expected = calc_price(Usage(input_tokens=1000, output_tokens=500), model_ref="gpt-4o", provider_id="openai")
+    assert (result.input_tokens, result.output_tokens) == (1000, 400)  # completion_tokens already includes reasoning
+    expected = calc_price(Usage(input_tokens=1000, output_tokens=400), model_ref="gpt-4o", provider_id="openai")
     assert result.estimated_cost == pytest.approx(float(expected.total_price))
     assert result.estimated_cost > 0
 
