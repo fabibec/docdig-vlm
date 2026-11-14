@@ -11,6 +11,7 @@ import sys
 import time
 from pathlib import Path
 
+from backend.logging_config import setup_logging
 from backend.pipeline import STEP_NAMES, PipelineTask, build_pipeline
 
 
@@ -78,6 +79,7 @@ def main(argv: list[str] | None = None) -> int:
     run.set_defaults(func=cmd_run)
 
     args = parser.parse_args(argv)
+    setup_logging()
     return args.func(args)
 
 

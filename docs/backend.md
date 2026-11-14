@@ -40,7 +40,7 @@ Lines closer than 0.75 × the median row height are dropped (`drop_spurious_line
 
 | Module | Purpose |
 |---|---|
-| `app.py` | FastAPI app, lifespan (DB + pool), `/api` router, SPA fallback |
+| `app.py` | FastAPI app, lifespan (DB + pool), `/api` router, access log, SPA fallback |
 | `config.py` | `Settings` (env prefix `WEB_`) |
 | `db.py`, `models.py` | async SQLite (WAL) + SQLModel tables `Batch`, `Doc`, `Page`, `Row`, `Flag` |
 | `schemas.py`, `enums.py` | every request/response + WS event model |
@@ -197,6 +197,31 @@ you add a column. Paths are stored relative to the artifact root.
 | `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL_NAME`, `LLM_REASONING_EFFORT`, `STEP_CONCURRENCY` | `.env` | env |
 | `LLM_PROMPT_FILE` | `data/prompts/llm_prompt.txt` | `/app/prompts/llm_prompt.txt` |
 | `OCR_*`, `LLAMA_CPP_*`, `MODEL_CACHE_DIR`, `HF_TOKEN` | see `backend/pipeline/settings.py` | not used (no OCR in the image) |
+| `LOG_LEVEL` | `INFO` (any case) | |
+| `LOG_FILE` | `<data>/logs/docdig.log`; empty = no file log | `/data/logs/docdig.log` (compose: `./data/docker/logs`) |
+| `LOG_MAX_BYTES`, `LOG_BACKUP_COUNT` | `10485760` (10 MiB), `5` | |
+| `LOG_FILE_FORMAT` | `json` (or `text`) | |
+| `LOG_LIBS_LEVEL` | `WARNING` (httpx, openai, sqlalchemy, PIL, ...) | |
+
+## Logging
+
+`backend/logging_config.py` sets up logging for the API and the pipeline CLI (`setup_logging()`).
+
+- The console gets plain text on stderr. The file gets one JSON object per line.
+- The file is `<data>/logs/docdig.log` (`WEB_DATA_DIR`, else `./data`). In Docker that is `./data/docker/logs/`.
+- It rotates at `LOG_MAX_BYTES`. Old files are `docdig.log.1` (newest) up to `docdig.log.<LOG_BACKUP_COUNT>`.
+- JSON fields: `ts` (UTC), `level`, `logger`, `msg`, `process`, `module`, `line`, `exc` (traceback) and
+  every `extra=` field.
+- Pool workers do not write the file. They send their records over a queue to the main process
+  (`start_queue_listener` / `setup_worker_logging`). `process` shows the worker, e.g. `SpawnProcess-1`.
+- Each `/api` request gets one line from `backend.api.access` (`method`, `path`, `status`, `duration_ms`).
+  `/api/health` is skipped; page image and PDF downloads log at `DEBUG`.
+- Use `log = logging.getLogger(__name__)`. Add context with `extra=`, for example
+  `log.info("page done", extra={"batch": batch_slug, "doc": doc_slug, "page": n})`.
+  Do not use the standard record names (`name`, `module`, `msg`, ...) as `extra` keys.
+- The pipeline CLI uses the same default file. Rotation is not safe across processes, so if the CLI runs
+  next to the API, give it its own file (`LOG_FILE=data/logs/cli.log`) or none (`LOG_FILE=`).
+- Read the file with `jq`, e.g. `jq -c 'select(.doc == "my-doc")' data/logs/docdig.log`.
 
 ## Tests
 

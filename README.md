@@ -95,6 +95,7 @@ Everything stateful lives in `/data`, which `compose.yaml` maps to `./data/docke
 ```
 /data/state/app.db                       SQLite (local only)
 /data/batches/<batch>/<doc>/input|raw|cropped|processed/...
+/data/logs/docdig.log                    rotating JSON-lines log (LOG_* in .env, see docs/backend.md)
 ```
 
 Uncomment the `prompts` mount in `compose.yaml` to try a different LLM prompt without rebuilding.

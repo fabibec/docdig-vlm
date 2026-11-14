@@ -5,10 +5,12 @@
 For single steps / pages use the CLI: uv run python -m backend.pipeline --help
 """
 
+from backend.logging_config import setup_logging
 from backend.pipeline import PipelineTask, build_pipeline
 from backend.pipeline.directories import INPUT_DIR, OUTPUT_DIR
 
 if __name__ == "__main__":
+    setup_logging()
     with build_pipeline() as extraction_pipeline:
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         for pdf in sorted(INPUT_DIR.glob("*.pdf")):

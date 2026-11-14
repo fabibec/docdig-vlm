@@ -16,3 +16,4 @@ llama-server.log
 benchmark/cache/
 
 benchmark/results/
+data/logs/
