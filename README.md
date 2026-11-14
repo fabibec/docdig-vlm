@@ -98,6 +98,9 @@ Everything stateful lives in `/data`, which `compose.yaml` maps to `./data/docke
 ```
 
 Uncomment the `prompts` mount in `compose.yaml` to try a different LLM prompt without rebuilding.
-Pushing a version tag (`1.2.3`) builds and pushes the image to GHCR (`.github/workflows/build_docker.yaml`).
+CI runs on GitLab (`.gitlab-ci.yml`): `test` (ruff + pytest, ESLint + `ng test`; also on merge requests) → `build`
+(push to `registry.vogelwarte.ch`) → `health-check` on `main` and `testing`. `promote` and `deploy` are manual jobs
+(`testing` branch → port 8502, `production` branch → port 8501); each deploy reads `/opt/docdig/<env>/.env` and mounts
+`/opt/docdig/<env>/data` as `/data` on the host.
 
 Settings: see [docs/backend.md](docs/backend.md#configuration).

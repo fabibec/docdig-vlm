@@ -1,4 +1,5 @@
 stages:
+  - test
   - build
   - health-check
   - promote
@@ -17,17 +18,90 @@ variables:
 # in the job talks straight to the host daemon via the mounted socket, so
 # neither DOCKER_HOST nor a service is needed.
 
-before_script:
-  - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-  - docker pull $IMAGE_NAME:latest || true
+# Shared setup for jobs that use the docker CLI.
+.docker:
+  image: docker:$DOCKER_IMAGE_VERSION
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker pull $IMAGE_NAME:latest || true
+  tags:
+    - docker
+
+# ---------- test ----------
+
+test:backend:
+  stage: test
+  image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+  timeout: 30m
+  variables:
+    UV_CACHE_DIR: .cache/uv
+    UV_LINK_MODE: copy
+    # Settings require these; tests never talk to a real LLM.
+    LLM_BASE_URL: http://127.0.0.1:9
+    LLM_API_KEY: ci-dummy
+  cache:
+    key:
+      files:
+        - uv.lock
+    paths:
+      - .cache/uv
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends poppler-utils
+  script:
+    - uv sync --frozen --no-group ocr
+    - uv run ruff check backend
+    - uv run pytest --junitxml=report.xml --cov=backend --cov-report=term --cov-report=xml:coverage.xml
+  coverage: '/^TOTAL.*\s+(\d+(?:\.\d+)?)%/'
+  artifacts:
+    when: always
+    reports:
+      junit: report.xml
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+  only:
+    - main
+    - testing
+    - merge_requests
+  tags:
+    - docker
+
+test:frontend:
+  stage: test
+  image: node:lts-trixie-slim
+  timeout: 30m
+  variables:
+    npm_config_cache: $CI_PROJECT_DIR/.cache/npm
+  cache:
+    key:
+      files:
+        - frontend/package-lock.json
+    paths:
+      - .cache/npm
+  script:
+    - cd frontend
+    - npm ci --no-audit --no-fund
+    - npm run lint
+    - npx ng test --watch=false
+  only:
+    - main
+    - testing
+    - merge_requests
+  tags:
+    - docker
+
+# ---------- build ----------
 
 build:
+  extends: .docker
   stage: build
-  image: docker:$DOCKER_IMAGE_VERSION
   timeout: 2 hours
+  needs:
+    - test:backend
+    - test:frontend
   script:
     # Build the image with cache
-    - docker build --cache-from $IMAGE_NAME:latest --build-arg BUILDKIT_INLINE_CACHE=1 -f docker/Dockerfile -t $IMAGE_NAME:$CI_COMMIT_SHA .
+    - docker build --cache-from $IMAGE_NAME:latest --build-arg BUILDKIT_INLINE_CACHE=1 -f Dockerfile -t $IMAGE_NAME:$CI_COMMIT_SHA .
     - docker tag $IMAGE_NAME:$CI_COMMIT_SHA $IMAGE_NAME:$CI_COMMIT_REF_SLUG
 
     # Tag as latest if on main branch
@@ -46,58 +120,55 @@ build:
   only:
     - main
     - testing
-  tags:
-    - docker
 
 health-check:
+  extends: .docker
   stage: health-check
-  image: docker:$DOCKER_IMAGE_VERSION
   timeout: 15m
+  variables:
+    TEST_CONTAINER: docdig-ci-$CI_JOB_ID
   script:
-    # Run container for health check. Because builds share the HOST docker
-    # daemon (socket binding), publish no ports (8502 may be taken by the
-    # deployed testing container) and clean up any leftover test container.
-    - docker rm -f docdig-test || true
-    - docker run -d --name docdig-test $IMAGE_NAME:$CI_COMMIT_SHA
-    - echo "Waiting for container to start..."
-    - sleep 60
-    # Check if container is healthy with retry logic
+    # Builds share the HOST docker daemon (socket binding): unique name and no
+    # published ports, so nothing clashes with the deployed containers.
+    # Dummy LLM settings: the app refuses to start without them.
+    - docker run -d --name $TEST_CONTAINER -e LLM_BASE_URL=http://127.0.0.1:9 -e LLM_API_KEY=ci-dummy $IMAGE_NAME:$CI_COMMIT_SHA
+    # Wait for the image's own HEALTHCHECK (GET /api/health) to report healthy.
     - |
-      for i in {1..20}; do
-        echo "Health check attempt $i/20..."
-        if docker ps | grep docdig-test; then
-          echo "Container is running, checking health endpoint..."
-          if docker exec docdig-test curl --fail --max-time 15 http://localhost:8501/_stcore/health; then
-            echo "Health check passed!"
-            break
-          else
-            echo "Health endpoint not ready yet"
-          fi
-        else
-          echo "Container not running, checking logs:"
-          docker logs docdig-test || true
-        fi
-        if [ $i -eq 20 ]; then
-          echo "Health check failed after 20 attempts"
-          echo "Final container logs:"
-          docker logs docdig-test || true
+      i=1
+      while [ $i -le 30 ]; do
+        state=$(docker inspect -f '{{.State.Status}}' $TEST_CONTAINER)
+        health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' $TEST_CONTAINER)
+        echo "Attempt $i/30: state=$state health=$health"
+        if [ "$state" != "running" ]; then
+          echo "Container is not running, logs:"
+          docker logs $TEST_CONTAINER || true
           exit 1
         fi
-        echo "Retrying in 30s..."
-        sleep 30
+        if [ "$health" = "healthy" ]; then
+          break
+        fi
+        if [ $i -eq 30 ]; then
+          echo "Container did not become healthy, logs:"
+          docker logs $TEST_CONTAINER || true
+          exit 1
+        fi
+        i=$((i + 1))
+        sleep 5
       done
-    # Clean up test container
-    - docker stop docdig-test || true
-    - docker rm docdig-test || true
+    # Double-check the endpoint directly (the image has no curl).
+    - docker exec $TEST_CONTAINER python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=10)"
+    - echo "Health check passed!"
+  after_script:
+    - docker rm -f $TEST_CONTAINER || true
   only:
     - main
     - testing
-  tags:
-    - docker
+
+# ---------- promote ----------
 
 promote_to_testing:
+  extends: .docker
   stage: promote
-  image: docker:$DOCKER_IMAGE_VERSION
   script:
     # Tag existing image as testing
     - docker tag $IMAGE_NAME:latest $IMAGE_NAME:testing
@@ -106,12 +177,10 @@ promote_to_testing:
   only:
     - testing
   when: manual
-  tags:
-    - docker
 
 promote_to_production:
+  extends: .docker
   stage: promote
-  image: docker:$DOCKER_IMAGE_VERSION
   script:
     # Tag existing image as production
     - docker tag $IMAGE_NAME:latest $IMAGE_NAME:production
@@ -120,12 +189,15 @@ promote_to_production:
   only:
     - production
   when: manual
-  tags:
-    - docker
+
+# ---------- deploy ----------
+# Host layout per environment (<env> = testing | production):
+#   /opt/docdig/<env>/.env   app settings (LLM_*, ...), created by hand
+#   /opt/docdig/<env>/data   mounted as /data (SQLite + batches)
 
 deploy_testing:
   stage: deploy
-  image: alpine:latest
+  image: alpine:3.22
   timeout: 5m
   before_script:
     - apk add --no-cache openssh-client
@@ -143,17 +215,17 @@ deploy_testing:
         # Pull testing image
         docker pull $IMAGE_NAME:testing
 
+        # Data dir must be writable by the container user (uid 1000).
+        # chown may need root: if it fails, run it once by hand on the host.
+        mkdir -p /opt/docdig/testing/data
+        chown 1000:1000 /opt/docdig/testing/data || echo 'WARN: could not chown /opt/docdig/testing/data to 1000:1000'
+
         # Stop and remove existing testing container
         docker stop docdig-testing || true
         docker rm docdig-testing || true
 
-        # HTR-VT checkpoint lives on the host (408 MB, not in git/image).
-        # Put best_WER.pth AND alphabet.json into /opt/docdig/htr_vt — with
-        # the directory empty, the app runs and Espece falls back to TrOCR.
-        mkdir -p /opt/docdig/htr_vt
-
         # Start new testing container on port 8502
-        docker run -d --name docdig-testing -p 8502:8501 --restart unless-stopped -v /opt/docdig/htr_vt:/app/config/htr_vt:ro $IMAGE_NAME:testing
+        docker run -d --name docdig-testing -p 8502:8000 --restart unless-stopped --env-file /opt/docdig/testing/.env -v /opt/docdig/testing/data:/data $IMAGE_NAME:testing
 
         # Clean up old images
         docker image prune -f
@@ -167,7 +239,7 @@ deploy_testing:
 
 deploy_production:
   stage: deploy
-  image: alpine:latest
+  image: alpine:3.22
   timeout: 5m
   needs:
     - promote_to_production
@@ -187,17 +259,17 @@ deploy_production:
         # Pull production image
         docker pull $IMAGE_NAME:production
 
+        # Data dir must be writable by the container user (uid 1000).
+        # chown may need root: if it fails, run it once by hand on the host.
+        mkdir -p /opt/docdig/production/data
+        chown 1000:1000 /opt/docdig/production/data || echo 'WARN: could not chown /opt/docdig/production/data to 1000:1000'
+
         # Stop and remove existing production container
         docker stop docdig-production || true
         docker rm docdig-production || true
 
-        # HTR-VT checkpoint lives on the host (408 MB, not in git/image).
-        # Put best_WER.pth AND alphabet.json into /opt/docdig/htr_vt — with
-        # the directory empty, the app runs and Espece falls back to TrOCR.
-        mkdir -p /opt/docdig/htr_vt
-
         # Start new production container on port 8501
-        docker run -d --name docdig-production -p 8501:8501 --restart unless-stopped -v /opt/docdig/htr_vt:/app/config/htr_vt:ro $IMAGE_NAME:production
+        docker run -d --name docdig-production -p 8501:8000 --restart unless-stopped --env-file /opt/docdig/production/.env -v /opt/docdig/production/data:/data $IMAGE_NAME:production
 
         # Clean up old images
         docker image prune -f
