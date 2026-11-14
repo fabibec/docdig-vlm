@@ -60,7 +60,7 @@ const PREVIEW_PAGE = 10;
                   <input class="input h-7 px-2 py-0 text-sm min-w-0 flex-1"
                          [value]="editName()"
                          (input)="editName.set($any($event.target).value)"
-                         (keydown.escape)="cancelRename()" />
+                         (keydown.escape)="$event.stopPropagation(); cancelRename()" />
                   <button type="submit" class="btn-icon size-6 text-green-600 hover:text-green-700"
                           [attr.aria-label]="'upload.save' | t" [attr.title]="'upload.save' | t">
                     <ng-icon name="lucideCheck" size="0.85rem" />
