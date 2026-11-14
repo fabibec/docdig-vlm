@@ -400,7 +400,11 @@ async def update_doc(slug: str, body: DocUpdate, session: AsyncSession = Depends
     doc = await _doc(session, slug)
     clean_name = PurePath(body.filename.strip()).name
     ctx = {"batch": doc.batch.slug, "doc": slug}
-    if not clean_name or clean_name == ".pdf":
+    if doc.status in (DocStatus.queued, DocStatus.processing):
+        # The pool worker reads input/<filename>; moving it mid-run makes the job fail.
+        log.warning("doc rename rejected: %s is %s", slug, doc.status.value, extra=ctx)
+        raise HTTPException(409, "document is being processed")
+    if not clean_name or clean_name in {".", "..", ".pdf"}:
         log.warning("doc rename rejected: invalid filename %r for %s", body.filename, slug, extra=ctx)
         raise HTTPException(422, "invalid filename")
     if not clean_name.lower().endswith(".pdf"):

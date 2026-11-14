@@ -12,7 +12,7 @@ from openai import AsyncOpenAI, ContentFilterFinishReasonError, DefaultAsyncHttp
 from pydantic import FilePath, ValidationError
 from tabulate import tabulate
 
-from backend.pipeline.models.llm_responses import ExtractionResult, PageTable
+from backend.pipeline.models.llm_responses import ExtractionResult, PageTable, TableRow
 from backend.pipeline.models.pipeline_parts import PipelineStep, PipelineTask, page_stem
 from backend.pipeline.settings import settings
 
@@ -97,7 +97,8 @@ class LlmExtractor(PipelineStep):
 
         u = completion.usage
         input_tokens = u.prompt_tokens
-        output_tokens = u.completion_tokens + u.completion_tokens_details.reasoning_tokens
+        # completion_tokens already includes reasoning tokens (completion_tokens_details is only a breakdown).
+        output_tokens = u.completion_tokens
 
         price_data = calc_price(
             Usage(input_tokens=input_tokens, output_tokens=output_tokens),
@@ -155,7 +156,7 @@ class LlmExtractor(PipelineStep):
             )
 
             buf = io.StringIO(newline="")
-            writer = csv.DictWriter(buf, fieldnames=rows[0].keys())
+            writer = csv.DictWriter(buf, fieldnames=list(TableRow.model_fields))  # header even for 0 rows
             writer.writeheader()
             writer.writerows(rows)
             (out_dir / f"{page_stem(num)}.csv").write_text(buf.getvalue(), encoding="utf-8", newline="")

@@ -17,3 +17,4 @@ benchmark/cache/
 
 benchmark/results/
 data/logs/
+.claude/worktrees/

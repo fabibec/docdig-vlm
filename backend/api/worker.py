@@ -48,4 +48,15 @@ def run_doc(doc_id: int, input_pdf: str, out_dir: str) -> str:
 
     log.debug("run_doc %s: %s -> %s", doc_id, input_pdf, out_dir, extra={"doc_id": doc_id})
     task = PipelineTask(input_pdf=Path(input_pdf), output_directory=Path(out_dir), on_progress=report)
-    return _pipeline.run(task).model_dump_json()
+    try:
+        return _pipeline.run(task).model_dump_json()
+    except Exception as exc:
+        # Third-party exceptions (e.g. openai.APIConnectionError) often cannot be unpickled in the main
+        # process, which then reports a misleading TypeError. Log the real traceback here and hand back
+        # a plain, picklable error that keeps type and message.
+        log.exception("run_doc %s failed", doc_id, extra={"doc_id": doc_id})
+        raise WorkerError(f"{type(exc).__name__}: {exc}") from None
+
+
+class WorkerError(RuntimeError):
+    """Picklable stand-in for an exception raised inside a pool worker."""
