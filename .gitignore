@@ -16,3 +16,10 @@ llama-server.log
 benchmark/cache/
 
 benchmark/results/
+
+# test / coverage output
+.coverage
+.coverage.*
+coverage.xml
+report.xml
+htmlcov/

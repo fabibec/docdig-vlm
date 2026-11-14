@@ -77,11 +77,21 @@ document, renaming and (soft) deleting batches and files, and a review UI with a
 ## Tests and lint
 
 ```bash
-uv run pytest                        # backend + pipeline tests in tests/
+uv run pytest                        # all tests in tests/ (no network, no LLM, ~15 s)
+uv run pytest tests/api              # only the API tests
+uv run pytest -m "not slow"          # skip tests marked slow
+uv run pytest --cov=backend --cov-report=term   # with coverage (pytest-cov, config in pyproject.toml)
 uv run ruff check backend            # config in pyproject.toml ([tool.ruff]); --fix applies safe fixes
 cd frontend && npm test              # Angular unit tests (*.spec.ts)
 cd frontend && npm run lint          # ESLint: typescript-eslint + angular-eslint (eslint.config.mjs); lint:fix
 ```
+
+`tests/conftest.py` sets safe defaults before anything is imported: a dummy `LLM_BASE_URL`/`LLM_API_KEY`
+and a temporary `WEB_DATA_DIR`, so the tests never touch `data/` or a real LLM. The API tests in `tests/api/`
+run the FastAPI app with a fresh SQLite file and artifact folder per test (`api` fixture in
+`tests/api/conftest.py`). The process pool is never started: `processor.enqueue` only records doc ids. Insert
+test data with the `factory` fixture (`tests/api/helpers.py`). Files are split by area: `test_batches.py`,
+`test_docs.py`, `test_review.py`, `test_flags.py`, `test_processing.py`, `test_realtime.py`, `test_db.py`.
 
 ## Docker
 

@@ -29,6 +29,7 @@ dependencies = [
 dev = [
     "ruff>=0.17.0",
     "pytest>=8.0.0",
+    "pytest-cov>=7.1.0",
 ]
 # Local OCR step, never part of the Docker image.
 ocr = [
@@ -74,4 +75,24 @@ quote-style = "double"
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = [
+    "slow: takes more than a few seconds (deselect with -m 'not slow')",
+    "integration: exercises several components together (real files, full app)",
+]
+
+[tool.coverage.run]
+source = ["backend"]
+omit = ["backend/pipeline/backup/*"]
+# SQLAlchemy async runs route code inside greenlets; without this, lines after an await look uncovered.
+concurrency = ["greenlet", "thread"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]
 
