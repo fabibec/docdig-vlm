@@ -18,6 +18,10 @@ log = logging.getLogger(__name__)
 SPURIOUS_LINES_WARN_THRESHOLD = 3
 
 
+class NoTableFound(ValueError):
+    """The page has no detectable printed table grid (blank page, wrong document, ...)."""
+
+
 class TableExtractor(PipelineStep):
     name = "cropped"
 
@@ -257,6 +261,7 @@ class TableExtractor(PipelineStep):
                 len(valid_col_centers),
                 extra={"file": img_path.name, "rows": len(valid_row_centers), "cols": len(valid_col_centers)},
             )
+            raise NoTableFound(f"{img_path.name}: no table grid found")
 
         x_min, x_max = valid_col_centers[0], valid_col_centers[-1]
         y_min = valid_row_centers[0]

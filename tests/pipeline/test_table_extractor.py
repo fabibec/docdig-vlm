@@ -9,6 +9,7 @@ import pytest
 
 from backend.pipeline.models.results import PageGeometry
 from backend.pipeline.steps import TableExtractor
+from backend.pipeline.steps.table_extractor import NoTableFound
 from tests.pipeline.helpers import FORM_COL_WIDTHS, draw_form
 
 TOL = 5  # px: line centres are averaged over a few pixels of (dilated) line thickness
@@ -132,10 +133,10 @@ def test_execute_respects_page_filter(tmp_path, make_task):
 
 
 def test_blank_page_raises_and_writes_no_geometry(tmp_path):
-    """Current behaviour: a page without a table fails (the API marks the doc as error)."""
+    """A page without a table fails with a clear error (the API marks the doc as error)."""
     cv2.imwrite(str(tmp_path / "p001.jpg"), np.full((2000, 1400, 3), 255, np.uint8))
 
-    with pytest.raises(IndexError):
+    with pytest.raises(NoTableFound, match="no table grid found"):
         TableExtractor.extract_printed_table(tmp_path / "p001.jpg", tmp_path / "cropped")
 
     assert not (tmp_path / "cropped" / "p001.geom.json").exists()
