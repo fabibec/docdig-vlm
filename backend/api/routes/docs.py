@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, datetime
 from pathlib import PurePath
 
@@ -32,12 +33,15 @@ from backend.api.schemas import (
 )
 from backend.api.storage import store
 
+log = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/docs", tags=["docs"])
 
 
 async def _doc(session: AsyncSession, slug: str) -> Doc:
     doc = await get_doc(session, slug)
     if not doc or doc.batch.deleted_at is not None:
+        log.debug("doc %s not found", slug, extra={"doc": slug})
         raise HTTPException(404, "doc not found")
     return doc
 
@@ -66,6 +70,11 @@ def _row_out(row: Row) -> RowOut:
         values={c: row.effective().get(c.value, "") for c in COLUMNS},
         corrected=[ColumnKey(c) for c in row.corrections],
     )
+
+
+def _n_changed(before: dict[str, str], after: dict[str, str]) -> int:
+    """Number of cells whose correction was added, changed or removed."""
+    return sum(before.get(k) != after.get(k) for k in before.keys() | after.keys())
 
 
 def _flag_out(f: Flag) -> FlagOut:
@@ -148,6 +157,13 @@ async def resolve_row(slug: str, num: int, idx: int, body: RowUpdate, session: A
     page = await _page(session, doc, num)
     row = page and (await session.exec(select(Row).where(Row.page_id == page.id, Row.idx == idx))).first()
     if not row:
+        log.warning(
+            "resolve rejected: row %d on page %d of %s not found",
+            idx,
+            num,
+            slug,
+            extra={"batch": doc.batch.slug, "doc": slug, "page": num, "row": idx},
+        )
         raise HTTPException(404, "row not found")
 
     corrections = dict(row.corrections)
@@ -157,6 +173,7 @@ async def resolve_row(slug: str, num: int, idx: int, body: RowUpdate, session: A
             corrections.pop(key.value, None)  # back to the machine value
         else:
             corrections[key.value] = value
+    n_changed = _n_changed(row.corrections, corrections)
     row.corrections = corrections  # reassign: JSON columns don't track in-place changes
 
     flags = (
@@ -169,6 +186,15 @@ async def resolve_row(slug: str, num: int, idx: int, body: RowUpdate, session: A
     await session.flush()
     await refresh_doc_flags(session, doc)
     await session.commit()
+    log.info(
+        "resolved row %d on page %d of %s: %d cells changed, %d flags resolved",
+        idx,
+        num,
+        slug,
+        n_changed,
+        len(flags),
+        extra={"batch": doc.batch.slug, "doc": slug, "page": num, "row": idx},
+    )
 
     await hub.broadcast(*await doc_events(session, doc))
     await store.after_review(doc.rel_dir)
@@ -181,12 +207,26 @@ async def resolve_page(slug: str, num: int, body: PageUpdate, session: AsyncSess
     doc = await _doc(session, slug)
     page = await _page(session, doc, num)
     if not page:
+        log.warning(
+            "resolve rejected: page %d of %s not processed",
+            num,
+            slug,
+            extra={"batch": doc.batch.slug, "doc": slug, "page": num},
+        )
         raise HTTPException(404, "page not processed")
 
+    n_changed = n_rows = 0
     rows_by_idx = {r.idx: r for r in await _rows(session, page)}
     for idx, changes in body.rows.items():
         row = rows_by_idx.get(idx)
         if not row:
+            log.warning(
+                "resolve rejected: row %d on page %d of %s not found",
+                idx,
+                num,
+                slug,
+                extra={"batch": doc.batch.slug, "doc": slug, "page": num, "row": idx},
+            )
             raise HTTPException(404, f"row {idx} not found")
         corrections = dict(row.corrections)
         for key, value in changes.items():
@@ -195,6 +235,9 @@ async def resolve_page(slug: str, num: int, body: PageUpdate, session: AsyncSess
                 corrections.pop(key.value, None)
             else:
                 corrections[key.value] = value
+        if changed := _n_changed(row.corrections, corrections):
+            n_changed += changed
+            n_rows += 1
         row.corrections = corrections
 
     flags = (
@@ -205,6 +248,15 @@ async def resolve_page(slug: str, num: int, body: PageUpdate, session: AsyncSess
     await session.flush()
     await refresh_doc_flags(session, doc)
     await session.commit()
+    log.info(
+        "resolved page %d of %s: %d cells changed in %d rows, %d flags resolved",
+        num,
+        slug,
+        n_changed,
+        n_rows,
+        len(flags),
+        extra={"batch": doc.batch.slug, "doc": slug, "page": num},
+    )
 
     await hub.broadcast(*await doc_events(session, doc))
     await store.after_review(doc.rel_dir)
@@ -229,11 +281,14 @@ async def _flags_changed(session: AsyncSession, doc: Doc) -> None:
 async def create_flag(slug: str, body: FlagCreate, session: AsyncSession = Depends(get_session)):
     """Add a reviewer annotation (source=user) to any row. A `done` doc goes back to `review`."""
     doc = await _doc(session, slug)
+    ctx = {"batch": doc.batch.slug, "doc": slug, "page": body.page, "row": body.row}
     if doc.status not in REVIEWABLE:
+        log.warning("note rejected: %s is %s, not processed yet", slug, doc.status, extra=ctx)
         raise HTTPException(409, "doc is not processed yet")
     page = await _page(session, doc, body.page)
     row = page and (await session.exec(select(Row).where(Row.page_id == page.id, Row.idx == body.row))).first()
     if not row:
+        log.warning("note rejected: row %d on page %d of %s not found", body.row, body.page, slug, extra=ctx)
         raise HTTPException(404, "row not found")
     flag = Flag(
         doc_id=doc.id,
@@ -246,6 +301,15 @@ async def create_flag(slug: str, body: FlagCreate, session: AsyncSession = Depen
     )
     session.add(flag)
     await _flags_changed(session, doc)
+    log.info(
+        "created note %d on page %d row %d of %s (%s)",
+        flag.id,
+        body.page,
+        body.row,
+        slug,
+        body.severity,
+        extra={**ctx, "flag": flag.id},
+    )
     return FlagChangeOut(doc=doc_out(doc), flags=[_flag_out(flag)])
 
 
@@ -254,12 +318,24 @@ async def delete_flag(slug: str, flag_id: int, session: AsyncSession = Depends(g
     """Remove a reviewer annotation. Machine flags (llm/rule) can only be resolved, not deleted."""
     doc = await _doc(session, slug)
     flag = await session.get(Flag, flag_id)
+    ctx = {"batch": doc.batch.slug, "doc": slug, "flag": flag_id}
     if not flag or flag.doc_id != doc.id:
+        log.warning("note delete rejected: flag %d not found in %s", flag_id, slug, extra=ctx)
         raise HTTPException(404, "flag not found")
     if flag.source is not FlagSource.user:
+        log.warning("note delete rejected: flag %d of %s is a %s flag", flag_id, slug, flag.source, extra=ctx)
         raise HTTPException(409, "only user annotations can be deleted")
+    page_num, row_idx = flag.page_num, flag.row_idx
     await session.delete(flag)
     await _flags_changed(session, doc)
+    log.info(
+        "deleted note %d on page %d row %s of %s",
+        flag_id,
+        page_num,
+        row_idx,
+        slug,
+        extra={**ctx, "page": page_num, "row": row_idx},
+    )
     return FlagChangeOut(doc=doc_out(doc), flags=[])
 
 
@@ -269,10 +345,23 @@ async def reopen_flags(slug: str, body: FlagIds, session: AsyncSession = Depends
     doc = await _doc(session, slug)
     flags = (await session.exec(select(Flag).where(Flag.doc_id == doc.id, col(Flag.id).in_(body.ids)))).all()
     if len(flags) != len(set(body.ids)):
+        missing = sorted(set(body.ids) - {f.id for f in flags})
+        log.warning(
+            "reopen rejected: flags %s not found in %s",
+            missing,
+            slug,
+            extra={"batch": doc.batch.slug, "doc": slug, "flags": missing},
+        )
         raise HTTPException(404, "flag not found")
     for f in flags:
         f.resolved = False
     await _flags_changed(session, doc)
+    log.info(
+        "reopened %d flags of %s",
+        len(flags),
+        slug,
+        extra={"batch": doc.batch.slug, "doc": slug, "flags": [f.id for f in flags]},
+    )
     return FlagChangeOut(doc=doc_out(doc), flags=[_flag_out(f) for f in flags])
 
 
@@ -292,6 +381,7 @@ async def artifact(slug: str, state: ArtifactState, num: int, session: AsyncSess
     if state is ArtifactState.processed:
         page = await _page(session, doc, num)
         if page:
+            log.debug("serving processed markdown page %d of %s", num, slug, extra={"doc": slug, "page": num})
             return PlainTextResponse(_markdown(await _rows(session, page)), media_type="text/markdown")
         path = store.artifact(doc.rel_dir, state, num, ".md")
         media = "text/markdown"
@@ -299,7 +389,9 @@ async def artifact(slug: str, state: ArtifactState, num: int, session: AsyncSess
         path = store.artifact(doc.rel_dir, state, num, ".jpg")
         media = "image/jpeg"
     if not path.is_file():
+        log.debug("artifact %s page %d of %s not found", state, num, slug, extra={"doc": slug, "page": num})
         raise HTTPException(404, "artifact not found")
+    log.debug("serving %s artifact page %d of %s", state, num, slug, extra={"doc": slug, "page": num})
     return FileResponse(path, media_type=media)
 
 
@@ -307,7 +399,9 @@ async def artifact(slug: str, state: ArtifactState, num: int, session: AsyncSess
 async def update_doc(slug: str, body: DocUpdate, session: AsyncSession = Depends(get_session)):
     doc = await _doc(session, slug)
     clean_name = PurePath(body.filename.strip()).name
+    ctx = {"batch": doc.batch.slug, "doc": slug}
     if not clean_name or clean_name == ".pdf":
+        log.warning("doc rename rejected: invalid filename %r for %s", body.filename, slug, extra=ctx)
         raise HTTPException(422, "invalid filename")
     if not clean_name.lower().endswith(".pdf"):
         clean_name = f"{clean_name}.pdf"
@@ -318,6 +412,12 @@ async def update_doc(slug: str, body: DocUpdate, session: AsyncSession = Depends
         )
     ).first()
     if existing:
+        log.warning(
+            "doc rename rejected: %r already exists in batch %s",
+            clean_name,
+            doc.batch.slug,
+            extra={**ctx, "file": clean_name},
+        )
         raise HTTPException(409, "A document with this filename already exists in this batch")
 
     if clean_name != doc.filename:
@@ -325,9 +425,13 @@ async def update_doc(slug: str, body: DocUpdate, session: AsyncSession = Depends
         new_path = store.input_pdf(doc.rel_dir, clean_name)
         if old_path.is_file():
             old_path.rename(new_path)
+        else:
+            log.warning("doc rename: input file %r of %s missing on disk", doc.filename, slug, extra=ctx)
+        old_name = doc.filename
         doc.filename = clean_name
         doc.updated_at = datetime.now(UTC)
         await session.commit()
+        log.info("renamed doc %s: %r -> %r", slug, old_name, clean_name, extra={**ctx, "file": clean_name})
 
     (batch_out,) = await batch_outs(session, [doc.batch])
     out = doc_out(doc)

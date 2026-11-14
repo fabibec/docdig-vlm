@@ -12,6 +12,7 @@ Local filesystem for now. A Nextcloud sync can later hook in at ``after_upload``
 callers: the pipeline keeps working on local files.
 """
 
+import logging
 import re
 import unicodedata
 from pathlib import Path
@@ -21,6 +22,8 @@ from fastapi import UploadFile
 
 from backend.api.config import settings
 from backend.api.enums import ArtifactState
+
+log = logging.getLogger(__name__)
 
 CHUNK = 1024 * 1024
 
@@ -60,8 +63,21 @@ class ArtifactStore:
             while chunk := await upload.read(CHUNK):
                 written += len(chunk)
                 if written > max_bytes:
+                    log.warning(
+                        "upload %r exceeds the size limit (%d bytes > %d), aborting",
+                        filename,
+                        written,
+                        max_bytes,
+                        extra={"file": filename, "dir": rel_dir, "bytes": written, "max_bytes": max_bytes},
+                    )
                     raise FileTooLarge(filename)
                 await out.write(chunk)
+        log.info(
+            "saved upload %r (%.2f MB)",
+            filename,
+            written / (1024 * 1024),
+            extra={"file": filename, "dir": rel_dir, "bytes": written},
+        )
         return target
 
     # --- hooks for a later Nextcloud sync (no-ops for now) ---

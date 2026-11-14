@@ -1,9 +1,13 @@
+import logging
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from backend.api.db import SessionLocal
 from backend.api.hub import hub
 from backend.api.queries import review_stats
 from backend.api.schemas import Health, ReviewEvent, ServerEventEnvelope
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["realtime"])
 
@@ -18,8 +22,8 @@ async def ws_endpoint(ws: WebSocket):
         await hub.send(ws, ReviewEvent(files_left=files_left, flags_left=flags_left))
         while True:
             await ws.receive_text()  # we don't expect messages; this detects disconnects
-    except WebSocketDisconnect:
-        pass
+    except WebSocketDisconnect as exc:
+        log.debug("ws closed by client (code %s)", exc.code, extra={"ws_code": exc.code})
     finally:
         hub.disconnect(ws)
 
