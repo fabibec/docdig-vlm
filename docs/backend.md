@@ -73,7 +73,7 @@ flowchart LR
 - `Doc.open_flags` and `Doc.status` (`review` ⇄ `done`) are recomputed by `queries.refresh_doc_flags` after every flag change.
 - `processed` artifacts are rendered from the DB, so the markdown includes corrections.
 - **Batch deletion is soft:** `DELETE /batches/{slug}` sets `Batch.deleted_at`. Deleted batches disappear from every listing, the review queue and the doc routes (404), but their files stay on disk and the DB rows remain.
-- **Renaming:** a batch rename only changes `Batch.name` (the slug stays). A doc rename changes `Doc.filename` and renames the input PDF on disk; `.pdf` is appended if missing and the name must be unique within the batch (409).
+- **Renaming:** a batch rename only changes `Batch.name` (the slug stays). A doc rename changes `Doc.filename` and renames the input PDF on disk; `.pdf` is appended if missing and the name must be unique within the batch (409). Docs that are `queued` or `processing` can't be renamed (409), because the worker reads the input file.
 - `PageRows.column_x` maps each column key to its x-range in the cropped image (`additional_remark` spans the last 3 printed columns). See `COLUMN_GRID_SPAN` in `enums.py`.
 
 ### Flags
@@ -102,7 +102,7 @@ All routes are under `/api`. OpenAPI is at `/docs` and `/openapi.json`. The WS e
 | PATCH | `/batches/{slug}` (body `BatchUpdate`) | `BatchOut` |
 | DELETE | `/batches/{slug}` | 204 (soft delete) |
 | GET | `/docs/{slug}` · `/docs/{slug}/flags?open=` | `DocDetail` · `list[FlagOut]` |
-| PATCH | `/docs/{slug}` (body `DocUpdate`) | `DocOut` · 409 name taken · 422 invalid name |
+| PATCH | `/docs/{slug}` (body `DocUpdate`) | `DocOut` · 409 name taken or doc still processing · 422 invalid name |
 | GET | `/docs/{slug}/file` | the uploaded PDF (`inline`) |
 | GET | `/docs/{slug}/page/{num}/rows` | `PageRows` · 404 if the page is not processed |
 | POST | `/docs/{slug}/page/{num}/rows/{idx}/resolve` (body `RowUpdate`) | `ResolveOut` |
@@ -225,8 +225,21 @@ you add a column. Paths are stored relative to the artifact root.
 
 ## Tests
 
-`uv run pytest` runs `tests/`: orientation detection (synthetic images) and the API features (cost, soft
-delete, renaming, file serving) against a temporary database.
+`uv run pytest` runs everything in `tests/` in about 20 s, without network or LLM calls.
+
+| Folder | What it covers |
+|---|---|
+| `tests/api/` | every route, flag rules, processing (`_persist`, `_fail`, re-queue), WebSocket events, DB migration. Each test gets its own SQLite file and artifact folder (`api` fixture); the process pool never starts. |
+| `tests/pipeline/` | image extraction, table extraction and orientation on synthetic forms and the sample scans, `Pipeline`/`collect_result`, the LLM step with a fake client, the CLI |
+| `tests/benchmark/` | the scoring functions and `evaluate` of `benchmark/run_benchmark.py` |
+| `tests/test_logging.py` | JSON format, rotation, settings, forwarding from a worker process |
+
+- `tests/conftest.py` sets a dummy `LLM_BASE_URL`/`LLM_API_KEY`, `LOG_FILE=` and a temporary
+  `WEB_DATA_DIR` before anything is imported, so tests never touch `data/`.
+- Tests that render PDFs need `pdftoppm` (poppler) and are skipped without it.
+- Coverage: `uv run pytest --cov=backend`. Keep `concurrency = ["greenlet", "thread"]` in
+  `[tool.coverage.run]`, otherwise code after async SQLAlchemy calls shows as uncovered.
+- The GitLab `test:backend` job runs ruff and pytest with coverage; `test:frontend` runs ESLint and `ng test`.
 
 ## Later: auth + Nextcloud
 

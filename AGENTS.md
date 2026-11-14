@@ -33,7 +33,11 @@ frontend/src/app/            Angular 22, standalone, zoneless, signals, httpReso
   features/{batches,review,document}/   pages; shared/ui/ reusable components
   shared/core, shared/utils  vendored zard code: do not edit, not linted
 benchmark/run_benchmark.py   scores processed CSVs vs data/dataset/output/*.csv
-tests/                       pytest (pipeline orientation + API features)
+backend/logging_config.py    LOG_* settings, console text + rotating JSON-lines file, worker log queue
+tests/                       pytest: api/ (routes, flags, processing, WS, DB), pipeline/, benchmark/, test_logging.py
+  conftest.py                dummy LLM env, LOG_FILE=, tmp WEB_DATA_DIR (set before imports)
+  api/conftest.py helpers.py `api` fixture (own SQLite + artifact dir, no process pool) + Factory for rows
+.gitlab-ci.yml               test (pytest+ruff, eslint+ng test) → build → health-check → manual promote/deploy
 data/prompts/llm_prompt.txt  the LLM prompt (copied into the Docker image)
 data/dataset/                ground truth (pdfs/ + output/<pdf>_pNNN.csv, `;`-separated) — edit only on request
 ```
@@ -42,7 +46,7 @@ data/dataset/                ground truth (pdfs/ + output/<pdf>_pNNN.csv, `;`-se
 
 ```bash
 uv sync                                    # Python 3.12; all groups (dev + ocr)
-uv run pytest                              # ~10 s
+uv run pytest                              # ~20 s, no network; --cov=backend for coverage
 uv run ruff check backend [--fix]          # line length 120
 cd frontend && npm test                    # Angular unit tests
 cd frontend && npm run lint                # ESLint
@@ -87,8 +91,14 @@ The `processed` step and the benchmark call a paid LLM API (`.env`). Do not run 
 
 ## Conventions
 
-- Python: type hints, pydantic/SQLModel models, async SQLAlchemy sessions in routes, `logging` (no prints in
-  the API). Keep `backend/pipeline` free of web dependencies.
+- Python: type hints, pydantic/SQLModel models, async SQLAlchemy sessions in routes. Keep `backend/pipeline`
+  free of web dependencies.
+- Logging: `log = logging.getLogger(__name__)`, %-style args, context via `extra={"batch": …, "doc": …,
+  "page": …}`. Never use LogRecord attribute names as extra keys (`name`, `msg`, `args`, `filename`,
+  `module`, `process`, …; use `file`, `pdf`, `step`). INFO for state changes, WARNING before rejecting input
+  (4xx), DEBUG for reads. Never log secrets, images or prompts. Don't add handlers; `setup_logging()` owns them.
+- Tests: new behaviour gets a test in the matching `tests/` folder. Use the `api` fixture and `Factory`
+  (`tests/api/helpers.py`) instead of real uploads/pipeline runs; fake the LLM client, never call it.
 - Frontend: components `OnPush`, state in `readonly` signals, reads via `httpResource(() => url)` (check
   `hasValue()` before `value()`), writes via `Api` methods returning Observables, `@if`/`@for`, `===`,
   icons from `@ng-icons/lucide`, buttons get `aria-label` + `title` from i18n.
@@ -97,12 +107,13 @@ The `processed` step and the benchmark call a paid LLM API (`.env`). Do not run 
 
 ## Gotchas
 
-- `tests/test_orientation_adversarial.py::test_benchmark_file_sha256_invariance` pins a SHA-256 of
-  `benchmark/run_benchmark.py` (and `test_empirical_benchmark_untouched` checks `git diff`), so they fail
-  whenever the benchmark is edited on purpose. Update or drop the pin rather than reverting the benchmark.
+- Exceptions raised in pool workers are re-raised as `worker.WorkerError("<Type>: <msg>")`, because many
+  third-party exceptions can't be unpickled in the main process. The real traceback is in the worker's log.
+- A doc can't be renamed while `queued`/`processing` (409): the worker reads `input/<filename>`.
+- Coverage needs `concurrency = ["greenlet", "thread"]` in `[tool.coverage.run]` (async SQLAlchemy).
 - `benchmark/results/` and `benchmark/cache/` are generated output; never edit by hand.
-- `data/state/`, `data/batches/` (local dev) and `data/docker/` (compose bind mount) hold real state and are
-  git-ignored. Do not delete them; stop the container before touching `data/docker/state/app.db`.
+- `data/state/`, `data/batches/`, `data/logs/` (local dev) and `data/docker/` (compose bind mount, incl.
+  `logs/`) hold real state and are git-ignored. Do not delete them; stop the container before touching `data/docker/state/app.db`.
 - The Docker image installs only runtime deps (`uv sync --no-default-groups`): anything imported by the API at
   module level must be in `[project].dependencies`, not in the `ocr`/`dev` groups.
 - `.dockerignore` excludes `docs`, `benchmark`, `*.md` and all of `data/` except `data/prompts`.
