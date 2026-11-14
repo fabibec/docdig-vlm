@@ -9,7 +9,7 @@ import tseslint from 'typescript-eslint';
 export default defineConfig(
   {
     // zard UI primitives are vendored/generated code; don't lint them.
-    ignores: ['dist/', '.angular/', 'node_modules/', 'src/app/shared/core/', 'src/app/shared/utils/'],
+    ignores: ['dist/', '.angular/', 'node_modules/', 'src/app/shared/core/', 'src/app/shared/utils/', 'src/app/shared/components/'],
   },
   {
     files: ['**/*.ts'],

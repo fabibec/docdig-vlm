@@ -8,11 +8,26 @@ Standalone, no web dependencies. `build_pipeline()` in `__init__.py` assembles t
 |---|---|---|---|
 | `raw` | `ImgExtractor` | input PDF | `raw/pNNN.jpg` |
 | `cropped` | `TableExtractor` | `raw/` | `cropped/pNNN.jpg`, `cropped/pNNN.geom.json`, `cropped/outlines/`, optional `cropped/grid/` |
-| `processed` | `LlmExtractor` | `cropped/` | `processed/pNNN.json` (`ExtractionResult`), `processed/pNNN.md` |
-| `ocr` (optional) | `OcrExtractor` | `cropped/` | `ocr/pNNN.md`. Needs the `ocr` group (vLLM); imported lazily. |
+| `cropped` | `TableOrientationDetector` | `raw/`, `cropped/pNNN.geom.json` | rotates `raw/pNNN.jpg` upright and re-runs the table extraction (see below) |
+| `processed` | `LlmExtractor` | `cropped/` | `processed/pNNN.json` (`ExtractionResult`, incl. `estimated_cost`), `processed/pNNN.md`, `processed/pNNN.csv` |
+| `ocr` (optional) | `OcrExtractor` | `cropped/` | `ocr/pNNN.md`. Ovis OCR via a local `llama-server` (`lib/`, models in `models/`). |
+| `tesseract` (optional) | `TesseractExtractor` | `cropped/` | `tesseract/pNNN.md`. Experimental cell-by-cell OCR for the newer 74-box form. |
 
 - `PipelineTask` describes one PDF: output folder, optional page filter and `on_progress(step, page, pages)` callback.
-- `Pipeline.run(task, only=[...])` returns a `DocResult`: per page, the geometry and the LLM `PageTable`.
+- `Pipeline.run(task, only=[...])` returns a `DocResult`: per page, the geometry, the LLM `PageTable` and the
+  estimated LLM cost (`genai-prices`).
+- `build_pipeline(ocr=…, tesseract=…)`: the OCR steps need the `ocr` dependency group and are imported lazily.
+  When one of them is enabled, the LLM step is left out.
+- The LLM is called through the OpenAI client against any compatible endpoint (`LLM_BASE_URL`, e.g. OpenRouter).
+  The prompt is `data/prompts/llm_prompt.txt`.
+
+**Orientation** (`TableOrientationDetector`, registered under the step name `cropped`, so `--steps cropped`
+includes it):
+- Sideways (90°/270°): more columns than rows and a landscape crop. The position of the tallest "row" (the wide
+  species column) decides the direction.
+- Upside-down (180°): portrait crop with the wide column on the right, or the header in the lower half.
+- The corrected `raw/pNNN.jpg` is written back and the crop + geometry are regenerated, so later steps only
+  ever see upright pages.
 
 **Geometry** (`PageGeometry`) is in pixels of the cropped image:
 - `header`: (y0, y1) of the header row
@@ -48,6 +63,7 @@ flowchart LR
 
 - One job per document. At most `WEB_POOL_SIZE` documents run in parallel; each worker builds the pipeline once.
 - After a job, the main process replaces the doc's pages, rows and flags. The status becomes `review` (open flags), `done`, or `error`.
+- Each page stores its `estimated_cost`; `Doc.total_cost` is the sum over the pages.
 - On startup, docs left in `processing` are re-queued.
 
 ### Data rules
@@ -56,6 +72,8 @@ flowchart LR
 - Resolving is per row: `POST /api/docs/{slug}/page/{num}/rows/{idx}/resolve` stores the changed cells and resolves every open flag of that row. A value equal to the machine value removes the correction, so sending a row's previous values restores it exactly (that is how undo works).
 - `Doc.open_flags` and `Doc.status` (`review` ⇄ `done`) are recomputed by `queries.refresh_doc_flags` after every flag change.
 - `processed` artifacts are rendered from the DB, so the markdown includes corrections.
+- **Batch deletion is soft:** `DELETE /batches/{slug}` sets `Batch.deleted_at`. Deleted batches disappear from every listing, the review queue and the doc routes (404), but their files stay on disk and the DB rows remain.
+- **Renaming:** a batch rename only changes `Batch.name` (the slug stays). A doc rename changes `Doc.filename` and renames the input PDF on disk; `.pdf` is appended if missing and the name must be unique within the batch (409).
 - `PageRows.column_x` maps each column key to its x-range in the cropped image (`additional_remark` spans the last 3 printed columns). See `COLUMN_GRID_SPAN` in `enums.py`.
 
 ### Flags
@@ -81,7 +99,11 @@ All routes are under `/api`. OpenAPI is at `/docs` and `/openapi.json`. The WS e
 | POST | `/batches` (multipart `name`, `files[]`, PDF only) | `BatchOut` · 409 `DuplicateFiles` · 413 · 422 |
 | GET | `/batches?page&size` | `Paginated[BatchOut]` |
 | GET | `/batches/{slug}` · `/batches/{slug}/docs?page&size` | `BatchOut` · `Paginated[DocOut]` |
+| PATCH | `/batches/{slug}` (body `BatchUpdate`) | `BatchOut` |
+| DELETE | `/batches/{slug}` | 204 (soft delete) |
 | GET | `/docs/{slug}` · `/docs/{slug}/flags?open=` | `DocDetail` · `list[FlagOut]` |
+| PATCH | `/docs/{slug}` (body `DocUpdate`) | `DocOut` · 409 name taken · 422 invalid name |
+| GET | `/docs/{slug}/file` | the uploaded PDF (`inline`) |
 | GET | `/docs/{slug}/page/{num}/rows` | `PageRows` · 404 if the page is not processed |
 | POST | `/docs/{slug}/page/{num}/rows/{idx}/resolve` (body `RowUpdate`) | `ResolveOut` |
 | POST | `/docs/{slug}/page/{num}/resolve` (body `PageUpdate`) | `ResolveOut` |
@@ -91,9 +113,10 @@ All routes are under `/api`. OpenAPI is at `/docs` and `/openapi.json`. The WS e
 | GET | `/docs/{slug}/artifacts/{raw\|cropped\|processed}/page/{num}` | JPEG / markdown |
 | GET | `/review?batch=` / `?doc=` | `ReviewQueue` |
 | GET | `/health` | `Health` |
-| WS | `/ws` | `doc.status`, `batch.created`, `batch.updated`, `review.pending` (also sent on connect) |
+| WS | `/ws` | `doc.status`, `batch.created`, `batch.updated`, `batch.deleted`, `review.pending` (also sent on connect) |
 
-Every write that changes flags broadcasts `doc.status`, `batch.updated` and `review.pending`.
+Every write that changes flags broadcasts `doc.status`, `batch.updated` and `review.pending`. Renames broadcast
+`batch.updated` (and `doc.status` for docs); a delete broadcasts `batch.deleted` and `review.pending`.
 
 ### Schemas (`schemas.py`)
 
@@ -114,7 +137,7 @@ Responses:
 | `Paginated[T]` | `items: T[]`, `total`, `page` (1-based), `size` |
 | `StatusCounts` | `queued`, `processing`, `review`, `done`, `error` (doc counts) |
 | `BatchOut` | `slug`, `name`, `created_at`, `num_docs`, `counts: StatusCounts`, `open_flags` |
-| `DocOut` | `slug`, `batch_slug`, `filename`, `status: DocStatus`, `num_pages?`, `open_flags`, `error?`, `updated_at` |
+| `DocOut` | `slug`, `batch_slug`, `filename`, `status: DocStatus`, `num_pages?`, `open_flags`, `error?`, `total_cost?` (USD), `updated_at` |
 | `PageInfo` | `num`, `open_flags`, `page_confidence?` |
 | `DocDetail` | `DocOut` + `batch_name`, `pages: PageInfo[]`, `artifact_url` (template with `{state}`, `{num}`) |
 | `RowOut` | `idx` (1-based), `y0`, `y1` (px in the cropped image), `values: {ColumnKey: str}` (effective), `corrected: ColumnKey[]` |
@@ -135,24 +158,28 @@ Requests:
 | `RowUpdate` | `values: {ColumnKey: str}`, changed cells only; `{}` = accept the machine values |
 | `FlagCreate` | `page`, `row`, `column?` (null = whole row), `message` (1–2000 chars), `severity` = `warning` |
 | `FlagIds` | `ids: int[]` (at least 1) |
+| `BatchUpdate` | `name` (1–120 chars) |
+| `DocUpdate` | `filename` (1–255 chars; path parts are stripped, `.pdf` appended if missing) |
 
 WebSocket events (server → client, discriminated by `type`; JSON schema at `GET /api/ws/schema`):
 
 | `type` | Payload |
 |---|---|
 | `doc.status` | `doc: DocOut`, `progress?: {step: ArtifactState, page, pages}` (only while `processing`) |
-| `batch.created` / `batch.updated` | `batch: BatchOut` |
+| `batch.created` / `batch.updated` / `batch.deleted` | `batch: BatchOut` |
 | `review.pending` | `files_left`, `flags_left` (global) |
 
 ### Database (`models.py`)
 
-SQLite (WAL) at `WEB_DB_PATH`. Tables are created with `create_all`, so adding a column needs a manual migration (or Alembic) on existing DBs. Paths are stored relative to the artifact root.
+SQLite (WAL) at `WEB_DB_PATH`. Tables are created with `create_all`. New columns on existing DBs are added by
+the small `ALTER TABLE` migration in `db._migrate_columns` (run by `init_db()` on startup), so extend it whenever
+you add a column. Paths are stored relative to the artifact root.
 
 | Table | Columns |
 |---|---|
-| `Batch` | `id`, `slug` (unique), `name`, `owner?`, `created_at` |
-| `Doc` | `id`, `slug` (unique), `batch_id`, `filename` (unique per batch), `status`, `num_pages?`, `open_flags` (denormalised), `error?`, `created_at`, `updated_at` |
-| `Page` | `id`, `doc_id`, `num` (unique per doc), `width`, `height`, `col_bounds: int[]` (JSON), `page_confidence?` |
+| `Batch` | `id`, `slug` (unique), `name`, `owner?`, `created_at`, `deleted_at?` (soft delete) |
+| `Doc` | `id`, `slug` (unique), `batch_id`, `filename` (unique per batch), `status`, `num_pages?`, `open_flags` (denormalised), `error?`, `total_cost?`, `created_at`, `updated_at` |
+| `Page` | `id`, `doc_id`, `num` (unique per doc), `width`, `height`, `col_bounds: int[]` (JSON), `page_confidence?`, `estimated_cost?` |
 | `Row` | `id`, `page_id`, `idx` (unique per page), `y0`, `y1`, `values` (JSON, machine), `corrections` (JSON, human) |
 | `Flag` | `id`, `doc_id`, `page_num`, `row_idx`, `column?`, `source`, `severity`, `code?`, `params` (JSON), `message`, `suggestion?`, `confidence?`, `resolved` |
 
@@ -162,13 +189,19 @@ SQLite (WAL) at `WEB_DB_PATH`. Tables are created with `create_all`, so adding a
 
 | Env | Default | Docker |
 |---|---|---|
-| `WEB_DATA_DIR` | `./data` | `/data` |
+| `WEB_DATA_DIR` | `./data` | `/data` (compose: `./data/docker`) |
 | `WEB_DB_PATH` | `<data>/state/app.db` | |
 | `WEB_FRONTEND_DIR` | `frontend/dist/browser` | `/app/static` |
 | `WEB_POOL_SIZE` | `2` | |
 | `WEB_MAX_UPLOAD_MB` | `200` (per file) | |
 | `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL_NAME`, `LLM_REASONING_EFFORT`, `STEP_CONCURRENCY` | `.env` | env |
 | `LLM_PROMPT_FILE` | `data/prompts/llm_prompt.txt` | `/app/prompts/llm_prompt.txt` |
+| `OCR_*`, `LLAMA_CPP_*`, `MODEL_CACHE_DIR`, `HF_TOKEN` | see `backend/pipeline/settings.py` | not used (no OCR in the image) |
+
+## Tests
+
+`uv run pytest` runs `tests/`: orientation detection (synthetic images) and the API features (cost, soft
+delete, renaming, file serving) against a temporary database.
 
 ## Later: auth + Nextcloud
 

@@ -1,8 +1,8 @@
 import shutil
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import PurePath
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import func
 from sqlmodel import select
@@ -15,7 +15,7 @@ from backend.api.hub import hub
 from backend.api.models import Batch, Doc
 from backend.api.processing import processor
 from backend.api.queries import batch_outs, doc_out, review_stats
-from backend.api.schemas import BatchEvent, BatchOut, DocOut, DuplicateFiles, Paginated, ReviewEvent
+from backend.api.schemas import BatchEvent, BatchOut, BatchUpdate, DocOut, DuplicateFiles, Paginated, ReviewEvent
 from backend.api.storage import FileTooLarge, slugify, store
 
 router = APIRouter(prefix="/batches", tags=["batches"])
@@ -25,7 +25,7 @@ PageSize = Query(10, ge=1, le=100)
 
 
 async def _batch(session: AsyncSession, slug: str) -> Batch:
-    batch = (await session.exec(select(Batch).where(Batch.slug == slug))).first()
+    batch = (await session.exec(select(Batch).where(Batch.slug == slug, Batch.deleted_at.is_(None)))).first()
     if not batch:
         raise HTTPException(404, "batch not found")
     return batch
@@ -103,10 +103,14 @@ async def create_batch(
 
 @router.get("", response_model=Paginated[BatchOut])
 async def list_batches(page: int = PageNum, size: int = PageSize, session: AsyncSession = Depends(get_session)):
-    total = (await session.exec(select(func.count()).select_from(Batch))).one()
+    total = (await session.exec(select(func.count()).select_from(Batch).where(Batch.deleted_at.is_(None)))).one()
     batches = (
         await session.exec(
-            select(Batch).order_by(Batch.created_at.desc(), Batch.id.desc()).offset((page - 1) * size).limit(size)
+            select(Batch)
+            .where(Batch.deleted_at.is_(None))
+            .order_by(Batch.created_at.desc(), Batch.id.desc())
+            .offset((page - 1) * size)
+            .limit(size)
         )
     ).all()
     return Paginated[BatchOut](items=await batch_outs(session, list(batches)), total=total, page=page, size=size)
@@ -116,6 +120,29 @@ async def list_batches(page: int = PageNum, size: int = PageSize, session: Async
 async def get_batch(slug: str, session: AsyncSession = Depends(get_session)):
     (out,) = await batch_outs(session, [await _batch(session, slug)])
     return out
+
+
+@router.patch("/{slug}", response_model=BatchOut)
+async def update_batch(slug: str, body: BatchUpdate, session: AsyncSession = Depends(get_session)):
+    batch = await _batch(session, slug)
+    batch.name = body.name.strip()
+    await session.commit()
+    (out,) = await batch_outs(session, [batch])
+    await hub.broadcast(BatchEvent(type="batch.updated", batch=out))
+    return out
+
+
+@router.delete("/{slug}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_batch(slug: str, session: AsyncSession = Depends(get_session)):
+    batch = await _batch(session, slug)
+    (out,) = await batch_outs(session, [batch])
+    batch.deleted_at = datetime.now(UTC)
+    await session.commit()
+    files_left, flags_left = await review_stats(session)
+    await hub.broadcast(
+        BatchEvent(type="batch.deleted", batch=out), ReviewEvent(files_left=files_left, flags_left=flags_left)
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/{slug}/docs", response_model=Paginated[DocOut])

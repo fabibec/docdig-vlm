@@ -44,7 +44,16 @@ class DocOut(BaseModel):
     num_pages: int | None
     open_flags: int
     error: str | None
+    total_cost: float | None = None
     updated_at: datetime
+
+
+class BatchUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+
+class DocUpdate(BaseModel):
+    filename: str = Field(min_length=1, max_length=255)
 
 
 class PageInfo(BaseModel):
@@ -172,7 +181,7 @@ class DocEvent(BaseModel):
 
 
 class BatchEvent(BaseModel):
-    type: Literal["batch.created", "batch.updated"]
+    type: Literal["batch.created", "batch.updated", "batch.deleted"]
     batch: BatchOut
 
 

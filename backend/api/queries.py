@@ -34,6 +34,7 @@ def doc_out(doc: Doc) -> DocOut:
         num_pages=doc.num_pages,
         open_flags=doc.open_flags,
         error=doc.error,
+        total_cost=doc.total_cost,
         updated_at=utc(doc.updated_at),
     )
 
@@ -44,7 +45,8 @@ async def batch_outs(session: AsyncSession, batches: list[Batch]) -> list[BatchO
     flags: dict[int, int] = dict.fromkeys(ids, 0)
     rows = await session.exec(
         select(Doc.batch_id, Doc.status, func.count(), func.sum(Doc.open_flags))
-        .where(Doc.batch_id.in_(ids))
+        .join(Batch)
+        .where(Doc.batch_id.in_(ids), Batch.deleted_at.is_(None))
         .group_by(Doc.batch_id, Doc.status)
     )
     for batch_id, status, n, open_flags in rows:
@@ -72,7 +74,12 @@ async def load_doc(session: AsyncSession, doc_id: int) -> Doc:
 
 
 async def review_stats(session: AsyncSession, batch_id: int | None = None, doc_id: int | None = None):
-    q = select(func.count(), func.coalesce(func.sum(Doc.open_flags), 0)).where(Doc.status == DocStatus.review)
+    q = (
+        select(func.count(), func.coalesce(func.sum(Doc.open_flags), 0))
+        .select_from(Doc)
+        .join(Batch)
+        .where(Doc.status == DocStatus.review, Batch.deleted_at.is_(None))
+    )
     if batch_id is not None:
         q = q.where(Doc.batch_id == batch_id)
     if doc_id is not None:

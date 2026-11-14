@@ -1,3 +1,6 @@
+from datetime import UTC, datetime
+from pathlib import PurePath
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, PlainTextResponse
 from sqlalchemy import func
@@ -9,9 +12,13 @@ from backend.api.db import get_session
 from backend.api.enums import COLUMN_GRID_SPAN, COLUMNS, ArtifactState, ColumnKey, DocStatus, FlagSource
 from backend.api.hub import hub
 from backend.api.models import Doc, Flag, Page, Row
-from backend.api.queries import doc_events, doc_out, get_doc, refresh_doc_flags
+from backend.api.queries import batch_outs, doc_events, doc_out, get_doc, refresh_doc_flags
 from backend.api.schemas import (
+    BatchEvent,
     DocDetail,
+    DocEvent,
+    DocOut,
+    DocUpdate,
     FlagChangeOut,
     FlagCreate,
     FlagIds,
@@ -30,7 +37,7 @@ router = APIRouter(prefix="/docs", tags=["docs"])
 
 async def _doc(session: AsyncSession, slug: str) -> Doc:
     doc = await get_doc(session, slug)
-    if not doc:
+    if not doc or doc.batch.deleted_at is not None:
         raise HTTPException(404, "doc not found")
     return doc
 
@@ -294,3 +301,51 @@ async def artifact(slug: str, state: ArtifactState, num: int, session: AsyncSess
     if not path.is_file():
         raise HTTPException(404, "artifact not found")
     return FileResponse(path, media_type=media)
+
+
+@router.patch("/{slug}", response_model=DocOut)
+async def update_doc(slug: str, body: DocUpdate, session: AsyncSession = Depends(get_session)):
+    doc = await _doc(session, slug)
+    clean_name = PurePath(body.filename.strip()).name
+    if not clean_name or clean_name == ".pdf":
+        raise HTTPException(422, "invalid filename")
+    if not clean_name.lower().endswith(".pdf"):
+        clean_name = f"{clean_name}.pdf"
+
+    existing = (
+        await session.exec(
+            select(Doc.id).where(Doc.batch_id == doc.batch_id, Doc.filename == clean_name, Doc.id != doc.id)
+        )
+    ).first()
+    if existing:
+        raise HTTPException(409, "A document with this filename already exists in this batch")
+
+    if clean_name != doc.filename:
+        old_path = store.input_pdf(doc.rel_dir, doc.filename)
+        new_path = store.input_pdf(doc.rel_dir, clean_name)
+        if old_path.is_file():
+            old_path.rename(new_path)
+        doc.filename = clean_name
+        doc.updated_at = datetime.now(UTC)
+        await session.commit()
+
+    (batch_out,) = await batch_outs(session, [doc.batch])
+    out = doc_out(doc)
+    await hub.broadcast(
+        DocEvent(type="doc.status", doc=out),
+        BatchEvent(type="batch.updated", batch=batch_out),
+    )
+    return out
+
+
+@router.get("/{slug}/file", response_class=FileResponse)
+async def get_doc_file(slug: str, session: AsyncSession = Depends(get_session)):
+    doc = await _doc(session, slug)
+    path = store.input_pdf(doc.rel_dir, doc.filename)
+    if not path.is_file():
+        raise HTTPException(404, "file not found")
+    return FileResponse(
+        path=path,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{doc.filename}"'},
+    )

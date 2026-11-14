@@ -1,0 +1,210 @@
+stages:
+  - build
+  - health-check
+  - promote
+  - deploy
+
+variables:
+  DOCKER_BUILDKIT: 1
+  BUILDKIT_PROGRESS: plain
+  IMAGE_NAME: registry.vogelwarte.ch/$CI_PROJECT_PATH
+  # Pinned CLI image — floating :latest broke the pipeline before.
+  DOCKER_IMAGE_VERSION: "27.3.1"
+
+# NOTE: no docker:dind service here. The runner (merops-01) mounts the host
+# Docker socket into job containers (socket binding) — a dind daemon cannot
+# even bind /var/run/docker.sock ("device or resource busy"). The docker CLI
+# in the job talks straight to the host daemon via the mounted socket, so
+# neither DOCKER_HOST nor a service is needed.
+
+before_script:
+  - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  - docker pull $IMAGE_NAME:latest || true
+
+build:
+  stage: build
+  image: docker:$DOCKER_IMAGE_VERSION
+  timeout: 2 hours
+  script:
+    # Build the image with cache
+    - docker build --cache-from $IMAGE_NAME:latest --build-arg BUILDKIT_INLINE_CACHE=1 -f docker/Dockerfile -t $IMAGE_NAME:$CI_COMMIT_SHA .
+    - docker tag $IMAGE_NAME:$CI_COMMIT_SHA $IMAGE_NAME:$CI_COMMIT_REF_SLUG
+
+    # Tag as latest if on main branch
+    - |
+      if [ "$CI_COMMIT_REF_NAME" = "main" ]; then
+        docker tag $IMAGE_NAME:$CI_COMMIT_SHA $IMAGE_NAME:latest
+      fi
+
+    # Push all tags
+    - docker push $IMAGE_NAME:$CI_COMMIT_SHA
+    - docker push $IMAGE_NAME:$CI_COMMIT_REF_SLUG
+    - |
+      if [ "$CI_COMMIT_REF_NAME" = "main" ]; then
+        docker push $IMAGE_NAME:latest
+      fi
+  only:
+    - main
+    - testing
+  tags:
+    - docker
+
+health-check:
+  stage: health-check
+  image: docker:$DOCKER_IMAGE_VERSION
+  timeout: 15m
+  script:
+    # Run container for health check. Because builds share the HOST docker
+    # daemon (socket binding), publish no ports (8502 may be taken by the
+    # deployed testing container) and clean up any leftover test container.
+    - docker rm -f docdig-test || true
+    - docker run -d --name docdig-test $IMAGE_NAME:$CI_COMMIT_SHA
+    - echo "Waiting for container to start..."
+    - sleep 60
+    # Check if container is healthy with retry logic
+    - |
+      for i in {1..20}; do
+        echo "Health check attempt $i/20..."
+        if docker ps | grep docdig-test; then
+          echo "Container is running, checking health endpoint..."
+          if docker exec docdig-test curl --fail --max-time 15 http://localhost:8501/_stcore/health; then
+            echo "Health check passed!"
+            break
+          else
+            echo "Health endpoint not ready yet"
+          fi
+        else
+          echo "Container not running, checking logs:"
+          docker logs docdig-test || true
+        fi
+        if [ $i -eq 20 ]; then
+          echo "Health check failed after 20 attempts"
+          echo "Final container logs:"
+          docker logs docdig-test || true
+          exit 1
+        fi
+        echo "Retrying in 30s..."
+        sleep 30
+      done
+    # Clean up test container
+    - docker stop docdig-test || true
+    - docker rm docdig-test || true
+  only:
+    - main
+    - testing
+  tags:
+    - docker
+
+promote_to_testing:
+  stage: promote
+  image: docker:$DOCKER_IMAGE_VERSION
+  script:
+    # Tag existing image as testing
+    - docker tag $IMAGE_NAME:latest $IMAGE_NAME:testing
+    # Push testing tag to registry
+    - docker push $IMAGE_NAME:testing
+  only:
+    - testing
+  when: manual
+  tags:
+    - docker
+
+promote_to_production:
+  stage: promote
+  image: docker:$DOCKER_IMAGE_VERSION
+  script:
+    # Tag existing image as production
+    - docker tag $IMAGE_NAME:latest $IMAGE_NAME:production
+    # Push production tag to registry
+    - docker push $IMAGE_NAME:production
+  only:
+    - production
+  when: manual
+  tags:
+    - docker
+
+deploy_testing:
+  stage: deploy
+  image: alpine:latest
+  timeout: 5m
+  before_script:
+    - apk add --no-cache openssh-client
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY" | base64 -d | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - ssh-keyscan -H $DEPLOY_HOST >> ~/.ssh/known_hosts
+  script:
+    - |
+      ssh $DEPLOY_USER@$DEPLOY_HOST "
+        # Login to registry
+        docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD registry.vogelwarte.ch
+
+        # Pull testing image
+        docker pull $IMAGE_NAME:testing
+
+        # Stop and remove existing testing container
+        docker stop docdig-testing || true
+        docker rm docdig-testing || true
+
+        # HTR-VT checkpoint lives on the host (408 MB, not in git/image).
+        # Put best_WER.pth AND alphabet.json into /opt/docdig/htr_vt — with
+        # the directory empty, the app runs and Espece falls back to TrOCR.
+        mkdir -p /opt/docdig/htr_vt
+
+        # Start new testing container on port 8502
+        docker run -d --name docdig-testing -p 8502:8501 --restart unless-stopped -v /opt/docdig/htr_vt:/app/config/htr_vt:ro $IMAGE_NAME:testing
+
+        # Clean up old images
+        docker image prune -f
+      "
+  environment:
+    name: testing
+    url: http://$DEPLOY_HOST:8502
+  only:
+    - testing
+  when: manual
+
+deploy_production:
+  stage: deploy
+  image: alpine:latest
+  timeout: 5m
+  needs:
+    - promote_to_production
+  before_script:
+    - apk add --no-cache openssh-client
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY" | base64 -d | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - ssh-keyscan -H $DEPLOY_HOST >> ~/.ssh/known_hosts
+  script:
+    - |
+      ssh $DEPLOY_USER@$DEPLOY_HOST "
+        # Login to registry
+        docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD registry.vogelwarte.ch
+
+        # Pull production image
+        docker pull $IMAGE_NAME:production
+
+        # Stop and remove existing production container
+        docker stop docdig-production || true
+        docker rm docdig-production || true
+
+        # HTR-VT checkpoint lives on the host (408 MB, not in git/image).
+        # Put best_WER.pth AND alphabet.json into /opt/docdig/htr_vt — with
+        # the directory empty, the app runs and Espece falls back to TrOCR.
+        mkdir -p /opt/docdig/htr_vt
+
+        # Start new production container on port 8501
+        docker run -d --name docdig-production -p 8501:8501 --restart unless-stopped -v /opt/docdig/htr_vt:/app/config/htr_vt:ro $IMAGE_NAME:production
+
+        # Clean up old images
+        docker image prune -f
+      "
+  environment:
+    name: production
+    url: http://$DEPLOY_HOST:8501
+  only:
+    - production
+  when: manual

@@ -13,9 +13,14 @@ STEP_NAMES = ["raw", "cropped", "processed"]
 
 def build_pipeline(draw_rows: bool = False, ocr: bool = False, tesseract: bool = False) -> Pipeline:
     """The default pipeline. Call ``.setup()`` before running it."""
-    from backend.pipeline.steps import ImgExtractor, LlmExtractor, TableExtractor
+    from backend.pipeline.steps import ImgExtractor, LlmExtractor, TableExtractor, TableOrientationDetector
 
-    pipeline = Pipeline().add_step(ImgExtractor()).add_step(TableExtractor(draw_rows=draw_rows))
+    pipeline = (
+        Pipeline()
+        .add_step(ImgExtractor())
+        .add_step(TableExtractor(draw_rows=draw_rows))
+        .add_step(TableOrientationDetector(draw_rows=draw_rows))
+    )
     if ocr:
         from backend.pipeline.steps import OcrExtractor
 
@@ -36,5 +41,6 @@ __all__ = [
     "PageResult",
     "Pipeline",
     "PipelineTask",
+    "TableOrientationDetector",
     "build_pipeline",
 ]

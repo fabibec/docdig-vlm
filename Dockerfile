@@ -9,7 +9,7 @@ RUN npm ci --no-audit --no-fund
 COPY frontend/ ./
 RUN npm run build
 
-# ---------- 2) python dependencies (runtime set only, no vLLM) ----------
+# ---------- 2) python dependencies (runtime set only, no OCR/dev groups) ----------
 FROM python:3.12-slim-trixie AS py
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never

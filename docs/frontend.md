@@ -10,6 +10,7 @@ npm ci
 npm start        # ng serve on :4200; proxies /api and the WebSocket to :8000 (proxy.conf.json)
 npm run build    # -> frontend/dist/browser (what the backend serves)
 npm run lint     # ESLint (eslint.config.mjs); `npm run lint:fix` applies safe fixes
+npm test         # unit tests (@angular/build:unit-test, *.spec.ts next to the component)
 ```
 
 Lint rules: `typescript-eslint` recommended + stylistic, `angular-eslint` TS + template + accessibility presets, plus:
@@ -70,12 +71,17 @@ Route params arrive as component inputs (`withComponentInputBinding`).
 
 ### Batches (`/`)
 - **Batch card:** name (links to the batch's review queue), creation time, file count, per-status badges, and open flags.
+  - **Rename** (pencil icon): inline edit of the batch name, saved with Enter / ✓, cancelled with Esc / ✕ (`PATCH /api/batches/{slug}`).
+  - **Delete** (trash icon): asks for confirmation, then soft-deletes the batch (`DELETE /api/batches/{slug}`). Files stay on the server.
 - **Expanding a card** lists its files (paginated, 10 per page) with live processing progress (step, page/pages).
+  - Each file shows its LLM cost (`DocOut.total_cost`, e.g. "$0.02 (3 pages)"). Costs are only shown in the expanded list, not in the collapsed header.
+  - Each file can be renamed inline (pencil icon, `PATCH /api/docs/{slug}`); a name that already exists in the batch is rejected.
 - **Clickable files:** `review` opens `/review/file/:slug`, `done` opens `/:slug`. `queued`, `processing` and `error` files are not clickable (the error text shows as a tooltip).
-- **Live updates:** `batch.*` events reload the list; `doc.status` events reload an expanded card.
+- **Live updates:** `batch.*` events (incl. `batch.deleted`) reload the list; `doc.status` events reload an expanded card.
 - **Upload dialog:**
   - Accepts drag and drop, file selection, or a whole folder (`webkitdirectory`).
   - Non-PDF files are dropped silently, which matters for folder uploads.
+  - Every selected file can be previewed in a new tab (external-link icon) and renamed before the upload (pencil icon).
   - Duplicate names are skipped with a notice; the server returns `409 DuplicateFiles` as a second line of defence.
   - The preview is paginated, 10 per page, with sizes in B / KB / MB.
   - Upload progress is shown in %.
@@ -144,7 +150,7 @@ Layout:
 ## Realtime
 
 `Realtime` (root service) keeps a single WebSocket open to `/api/ws`. It reconnects with exponential backoff, up to 30 s.
-- `events$`: every server event (`doc.status`, `batch.created`, `batch.updated`, `review.pending`).
+- `events$`: every server event (`doc.status`, `batch.created`, `batch.updated`, `batch.deleted`, `review.pending`).
 - `pending`: latest `{files_left, flags_left}`. The server also sends this on connect.
 - `progress`: per doc slug `{step, page, pages}` while the doc is `processing`.
 

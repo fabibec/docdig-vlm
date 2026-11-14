@@ -24,6 +24,7 @@ class PageResult(BaseModel):
     num: int  # 1-based page number in the PDF
     geometry: PageGeometry
     table: PageTable
+    estimated_cost: float | None = None
 
 
 class DocResult(BaseModel):

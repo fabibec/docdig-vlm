@@ -109,6 +109,7 @@ class Processor:
             await session.exec(delete(Flag).where(col(Flag.doc_id) == doc_id))
 
             n_flags = 0
+            page_costs: list[float] = []
             for pr in result.pages:
                 g = pr.geometry
                 page = Page(
@@ -118,7 +119,10 @@ class Processor:
                     height=g.height,
                     col_bounds=g.col_bounds,
                     page_confidence=pr.table.page_confidence,
+                    estimated_cost=pr.estimated_cost,
                 )
+                if pr.estimated_cost is not None:
+                    page_costs.append(pr.estimated_cost)
                 session.add(page)
                 await session.flush()
                 for r in pr.table.rows:
@@ -134,6 +138,8 @@ class Processor:
                 doc.status = DocStatus.review if n_flags else DocStatus.done
             doc.num_pages = doc.num_pages or len(result.pages)
             doc.open_flags = n_flags
+            if page_costs:
+                doc.total_cost = round(sum(page_costs), 6)
             doc.updated_at = datetime.now(UTC)
             await session.commit()
             await hub.broadcast(*await doc_events(session, doc))

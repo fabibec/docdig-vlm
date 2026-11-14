@@ -121,6 +121,7 @@ def collect_result(task: PipelineTask) -> DocResult:
                 num=num,
                 geometry=PageGeometry.model_validate_json(geom.read_text("utf-8")),
                 table=extraction.table,
+                estimated_cost=extraction.estimated_cost,
             )
         )
     return DocResult(pages=pages)

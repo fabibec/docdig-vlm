@@ -43,10 +43,10 @@ A90441;Tannenmeise;;Fd;;12:30;63;8.5;;
 A90442;Tannenmeise;;Fd;;;61;8;;
 A90443;Birkenzeisig;m;Fnd;;;70;10.5;;
 A90444;Zitronenzeisig;;Fd;;13:30;80;12;;
-A90445;Rotkelchen;Xf;Fnd;19.7;04:30;71;17;Brutfleck;
-A90446;Heckenbraunelle;m;Fd;;T;70;18.5;;
-A90447;Rotkelchen;X;Fnd;;L;72;15.5;;
-A90448;Wasserpieper;;Fd;;T;84;19;;
-A90449;Heckenbraunelle;;Fnd;;;70;19;;
-A90450;Heckenbraunelle;;Fd;;;69;18;;
+A90445;Rotkehlchen;Xf;Fnd;19.7;04:30;71;17;Brutfleck;
+A90446;Heckenbraunelle;;Fd;;04:30;70;18.5;;
+A90447;Rotkehlchen;X;Fnd;;04:30;72;15.5;;
+A90448;Wasserpieper;;Fd;;04:30;84;19;;
+A90449;Heckenbraunelle;;Fnd;;04:30;70;19;;
+A90450;Heckenbraunelle;;Fd;;04:30;69;18;;
 

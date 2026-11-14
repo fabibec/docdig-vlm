@@ -29,7 +29,7 @@ const PAGE_SIZE = 10;
       @if (batches.hasValue()) {
         @let data = batches.value();
         @for (b of data.items; track b.slug) {
-          <app-batch-card [batch]="b" />
+          <app-batch-card [batch]="b" (deleted)="batches.reload()" />
         } @empty {
           <app-empty-state [title]="'batches.empty' | t" />
         }
@@ -58,7 +58,7 @@ export class BatchesPage {
   constructor() {
     // New batches / status counts: refetch the current page (debounced, events come in bursts).
     inject(Realtime).events$
-      .pipe(filter((e) => e.type === 'batch.created' || e.type === 'batch.updated'), debounceTime(400),
+      .pipe(filter((e) => e.type === 'batch.created' || e.type === 'batch.updated' || e.type === 'batch.deleted'), debounceTime(400),
             takeUntilDestroyed(inject(DestroyRef)))
       .subscribe(() => this.batches.reload());
   }

@@ -3,7 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import {
-  ArtifactState, BatchOut, DocDetail, DocOut, FlagChangeOut, FlagCreate, FlagOut, PageRows, PageUpdate, Paginated,
+  ArtifactState, BatchOut, BatchUpdate, DocDetail, DocOut, DocUpdate, FlagChangeOut, FlagCreate, FlagOut, PageRows, PageUpdate, Paginated,
   ResolveOut, ReviewQueue, RowUpdate,
 } from './api.types';
 
@@ -22,6 +22,7 @@ export class Api {
   allFlagsUrl = (slug: string) => `${API}/docs/${slug}/flags`;
   rowsUrl = (slug: string, page: number) => `${API}/docs/${slug}/page/${page}/rows`;
   artifactUrl = (slug: string, state: ArtifactState, page: number) => `${API}/docs/${slug}/artifacts/${state}/page/${page}`;
+  docFileUrl = (slug: string) => `${API}/docs/${slug}/file`;
 
   reviewUrl(scope: { batch?: string; doc?: string }): string {
     let params = new HttpParams();
@@ -61,6 +62,18 @@ export class Api {
   /** Undo a resolve. */
   reopenFlags(slug: string, ids: number[]) {
     return this.http.post<FlagChangeOut>(`${API}/docs/${slug}/flags/reopen`, { ids });
+  }
+
+  deleteBatch(slug: string) {
+    return this.http.delete<void>(`${API}/batches/${slug}`);
+  }
+
+  updateBatch(slug: string, body: BatchUpdate) {
+    return this.http.patch<BatchOut>(`${API}/batches/${slug}`, body);
+  }
+
+  updateDoc(slug: string, body: DocUpdate) {
+    return this.http.patch<DocOut>(`${API}/docs/${slug}`, body);
   }
 
   createBatch(name: string, files: File[]): Observable<HttpEvent<BatchOut>> {

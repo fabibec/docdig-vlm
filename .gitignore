@@ -1,8 +1,10 @@
 .venv
 .env
 .ruff_cache
+.pytest_cache
 __pycache__/
 data/output/
+data/docker
 lib/
 .cache
 models
@@ -11,6 +13,6 @@ models
 data/web
 llama-server.log
 
-# web app volume (state + artifacts)
-data/state/
-data/batches/
+benchmark/cache/
+
+benchmark/results/

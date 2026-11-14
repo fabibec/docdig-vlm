@@ -1,7 +1,7 @@
 # Notes
 
 ## Open Problems
-- OP 1: Ring numbers are usually noted once and then applied to following rows until a different number is written in front of it usually only the digit that changes is noted.
+- OP 1: Ring numbers are usually noted once and then applied to following rows until a different number is written in front of it usually only the digit that changes is noted. (done)
 - OP 2: Allow rearranging of detected row in the rendered view, mention arrow switching the rows around should be respected in prompt
 - OP 3: Make LLM flags international by creating predefined error categories
 - OP 4.1: Detect errors:
@@ -12,16 +12,17 @@
     - print some kind of error message when hovering over the error batch (including translations -> return fixed error codes)
 - OP 4.2: Handle network errors (and backend not reachable)
 - OP 5: Show cost per page in overview
-- OP 6: Allow deletion of batches
-- OP 7.1: Being able to preview files selected for upload change their names at upload
-- OP 7.2: Change the name of batches and file later (via icon)
+- OP 6: Allow deletion of batches (done)
+- OP 7.1: Being able to preview files (separate button, open in new tab) selected for upload change their names at upload (button) (done)
+- OP 7.2: Change the name of batches and file later (via icon) (done)
 - OP 8: Different Sheet versions (new Versions processed via local OCR? -> spawn 2 different Pipelines)
   - Get the species code from the euring database (periodically?)
   - Let Ovis only detect table structure und numbers -> map to list -> manual postprocessing (does detect numbers somewhat well but the whole format is a bit of)
   - In the end we can cut by table cell and get the digits/letters back
-- OP 9:csv-export? instead of md?
-- OP 10: Benchmark improvements
-- OP 11: Detect rotated pdfs
+- OP 9:csv-export? instead of md? (done)
+- OP 10: Benchmark improvements (done)
+- OP 11: Detect rotated pdfs (done)
+- OP 12: Additional Remarks are sometimes outside of the table. Maybe display the rotated image in the split view instead?
 
 ## Future Ideas
 - User Concept (Login, Azure AD to allow SSO?)

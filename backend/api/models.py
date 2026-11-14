@@ -18,6 +18,7 @@ class Batch(SQLModel, table=True):
     name: str
     owner: str | None = None  # username once auth exists
     created_at: datetime = Field(default_factory=utcnow)
+    deleted_at: datetime | None = Field(default=None, nullable=True, index=True)
 
     docs: list["Doc"] = Relationship(back_populates="batch")
 
@@ -33,6 +34,7 @@ class Doc(SQLModel, table=True):
     num_pages: int | None = None
     open_flags: int = 0  # denormalised for list views
     error: str | None = None
+    total_cost: float | None = None  # LLM cost of the whole document (sum over pages)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
 
@@ -54,6 +56,7 @@ class Page(SQLModel, table=True):
     height: int
     col_bounds: list[int] = Field(default_factory=list, sa_column=Column(JSON))
     page_confidence: float | None = None
+    estimated_cost: float | None = None
 
 
 class Row(SQLModel, table=True):

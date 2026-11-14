@@ -1,6 +1,7 @@
 from .img_extractor import ImgExtractor
 from .llm_extractor import LlmExtractor
 from .table_extractor import TableExtractor
+from .table_orientation_detector import TableOrientationDetector
 
 
 def __getattr__(name: str):
@@ -16,4 +17,11 @@ def __getattr__(name: str):
     raise AttributeError(name)
 
 
-__all__ = ["ImgExtractor", "LlmExtractor", "OcrExtractor", "TableExtractor", "TesseractExtractor"]
+__all__ = [
+    "ImgExtractor",
+    "LlmExtractor",
+    "OcrExtractor",
+    "TableExtractor",
+    "TableOrientationDetector",
+    "TesseractExtractor",
+]

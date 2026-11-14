@@ -28,8 +28,9 @@ dependencies = [
 [dependency-groups]
 dev = [
     "ruff>=0.17.0",
+    "pytest>=8.0.0",
 ]
-# Local OCR step (vLLM, GPU). Several GB, therefore never part of the Docker image.
+# Local OCR step, never part of the Docker image.
 ocr = [
     "rapidfuzz>=3.14.6",
     "pytesseract>=0.3.13",
@@ -70,3 +71,7 @@ ignore = [
 
 [tool.ruff.format]
 quote-style = "double"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+

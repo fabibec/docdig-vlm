@@ -25,7 +25,11 @@ export interface BatchOut {
 export interface DocOut {
   slug: string; batch_slug: string; filename: string; status: DocStatus;
   num_pages: number | null; open_flags: number; error: string | null; updated_at: string;
+  total_cost?: number | null;
 }
+
+export interface BatchUpdate { name: string; }
+export interface DocUpdate { filename: string; }
 
 export interface PageInfo { num: number; open_flags: number; page_confidence: number | null }
 
@@ -64,6 +68,6 @@ export interface ReviewQueue {
 // ---- WebSocket ----
 export interface Progress { step: ArtifactState; page: number; pages: number }
 export interface DocEvent { type: 'doc.status'; doc: DocOut; progress: Progress | null }
-export interface BatchEvent { type: 'batch.created' | 'batch.updated'; batch: BatchOut }
+export interface BatchEvent { type: 'batch.created' | 'batch.updated' | 'batch.deleted'; batch: BatchOut }
 export interface ReviewEvent { type: 'review.pending'; files_left: number; flags_left: number }
 export type ServerEvent = DocEvent | BatchEvent | ReviewEvent;

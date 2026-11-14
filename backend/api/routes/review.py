@@ -22,19 +22,19 @@ async def review_queue(
     q = (
         select(Doc)
         .join(Batch)
-        .where(Doc.status == DocStatus.review)
+        .where(Doc.status == DocStatus.review, Batch.deleted_at.is_(None))
         .options(selectinload(Doc.batch))
         .order_by(Batch.created_at, Batch.id, Doc.filename)
     )
     batch_id = doc_id = None
     if doc:
         d = await get_doc(session, doc)
-        if not d:
+        if not d or d.batch.deleted_at is not None:
             raise HTTPException(404, "doc not found")
         doc_id = d.id
         q = q.where(Doc.id == doc_id)
     elif batch:
-        b = (await session.exec(select(Batch).where(Batch.slug == batch))).first()
+        b = (await session.exec(select(Batch).where(Batch.slug == batch, Batch.deleted_at.is_(None)))).first()
         if not b:
             raise HTTPException(404, "batch not found")
         batch_id = b.id
