@@ -48,14 +48,16 @@ class TableOrientationDetector(PipelineStep):
             geom_path = cropped_dir / f"{stem}.geom.json"
             raw_path = raw_dir / f"{stem}.jpg"
 
+            ctx = {"pdf": task.input_pdf.name, "step": self.name, "page": num}
+
             if not geom_path.exists() or not raw_path.exists():
-                log.debug("Skipping orientation check for %s: missing geom or raw file", stem)
+                log.debug("Skipping orientation check for %s: missing geom or raw file", stem, extra=ctx)
                 continue
 
             try:
                 geom = PageGeometry.model_validate_json(geom_path.read_text(encoding="utf-8"))
             except Exception as e:
-                log.warning("Skipping orientation check for %s: invalid geometry JSON (%s)", stem, e)
+                log.warning("Skipping orientation check for %s: invalid geometry JSON (%s)", stem, e, extra=ctx)
                 continue
 
             num_rows = len(geom.row_bounds)
@@ -63,11 +65,12 @@ class TableOrientationDetector(PipelineStep):
 
             # Edge cases: non-table or empty bounds
             if num_rows == 0 or num_cols <= 0:
-                log.debug("Skipping orientation check for %s: empty row or column bounds", stem)
+                log.debug("Skipping orientation check for %s: empty row or column bounds", stem, extra=ctx)
                 continue
 
             rot_code: int | None = None
             angle_desc: str = ""
+            angle: int = 0  # correction applied, degrees clockwise
 
             # Case 1: Sideways table (more columns than rows and width > height)
             if (num_cols > num_rows) and (geom.width > geom.height):
@@ -79,10 +82,12 @@ class TableOrientationDetector(PipelineStep):
                 if max_idx < len(row_heights) / 2:
                     # 90° clockwise: wide column is near the top -> rotate 90° CCW
                     rot_code = cv2.ROTATE_90_COUNTERCLOCKWISE
+                    angle = 270
                     angle_desc = "90° clockwise (rotating 90° counter-clockwise)"
                 else:
                     # 270° clockwise (90° CCW): wide column is near the bottom -> rotate 90° CW
                     rot_code = cv2.ROTATE_90_CLOCKWISE
+                    angle = 90
                     angle_desc = "270° clockwise (rotating 90° clockwise)"
 
             # Case 2: Upside-down table (portrait aspect ratio, rows >= cols, inverted columns or header)
@@ -99,6 +104,7 @@ class TableOrientationDetector(PipelineStep):
 
                 if has_reversed_cols or has_bottom_header:
                     rot_code = cv2.ROTATE_180
+                    angle = 180
                     angle_desc = "180° upside-down (rotating 180°)"
 
             if rot_code is None:
@@ -109,14 +115,15 @@ class TableOrientationDetector(PipelineStep):
                     num_cols,
                     geom.width,
                     geom.height,
+                    extra={**ctx, "rows": num_rows, "cols": num_cols},
                 )
                 continue
 
-            log.info("Detected rotated table on page %d (%s): %s", num, stem, angle_desc)
+            log.info("Detected rotated table on page %d (%s): %s", num, stem, angle_desc, extra={**ctx, "angle": angle})
 
             raw_img = cv2.imread(str(raw_path))
             if raw_img is None:
-                log.warning("Could not read raw image at %s for rotation", raw_path)
+                log.warning("Could not read raw image at %s for rotation", raw_path, extra=ctx)
                 continue
 
             # Rotate and overwrite raw image on disk
@@ -129,4 +136,4 @@ class TableOrientationDetector(PipelineStep):
                 cropped_dir,
                 draw_rows=self.draw_rows,
             )
-            log.info("Successfully restored upright table on page %d (%s)", num, stem)
+            log.info("Successfully restored upright table on page %d (%s)", num, stem, extra={**ctx, "angle": angle})

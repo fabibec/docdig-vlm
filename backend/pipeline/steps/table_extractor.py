@@ -1,3 +1,4 @@
+import logging
 from itertools import pairwise
 from pathlib import Path
 from typing import Literal
@@ -9,6 +10,12 @@ from backend.pipeline.models.pipeline_parts import PipelineStep, PipelineTask, p
 from backend.pipeline.models.results import PageGeometry
 
 SplitMode = Literal["table", "row", "col"]
+
+log = logging.getLogger(__name__)
+
+# Warn when more horizontal lines than this are dropped as spurious on one page
+# (one or two crossed-out rows / underlined words are normal).
+SPURIOUS_LINES_WARN_THRESHOLD = 3
 
 
 class TableExtractor(PipelineStep):
@@ -216,13 +223,40 @@ class TableExtractor(PipelineStep):
         # ONLY keep horizontal lines that have at least 4 distinct green dots!
         valid_row_centers = [int(np.mean(g[:, 1])) for g in row_groups if len(g) >= 4]
         row_height = int(np.median(np.diff(valid_row_centers))) if len(valid_row_centers) > 5 else 35
+        detected_rows = len(valid_row_centers)
         valid_row_centers = TableExtractor.drop_spurious_lines(valid_row_centers, row_height)
+        dropped = detected_rows - len(valid_row_centers)
+        if dropped > SPURIOUS_LINES_WARN_THRESHOLD:
+            log.warning(
+                "%s: dropped %d of %d horizontal lines as spurious (row height %d px)",
+                img_path.name,
+                dropped,
+                detected_rows,
+                row_height,
+                extra={"file": img_path.name, "dropped_lines": dropped, "detected_lines": detected_rows},
+            )
+        elif dropped:
+            log.debug(
+                "%s: dropped %d spurious horizontal line(s)",
+                img_path.name,
+                dropped,
+                extra={"file": img_path.name, "dropped_lines": dropped, "detected_lines": detected_rows},
+            )
 
         # Group joint centers by X-coordinate and require at least 5 dots vertically per column line
         joint_pts_sorted_x = joint_pts[np.argsort(joint_pts[:, 0])]
         x_diffs = np.diff(joint_pts_sorted_x[:, 0])
         col_groups = np.split(joint_pts_sorted_x, np.where(x_diffs > 12)[0] + 1)
         valid_col_centers = [int(np.mean(g[:, 0])) for g in col_groups if len(g) >= 5]
+
+        if len(valid_row_centers) < 2 or len(valid_col_centers) < 2:
+            log.warning(
+                "%s: no table grid found (%d horizontal, %d vertical lines)",
+                img_path.name,
+                len(valid_row_centers),
+                len(valid_col_centers),
+                extra={"file": img_path.name, "rows": len(valid_row_centers), "cols": len(valid_col_centers)},
+            )
 
         x_min, x_max = valid_col_centers[0], valid_col_centers[-1]
         y_min = valid_row_centers[0]
@@ -285,6 +319,23 @@ class TableExtractor(PipelineStep):
             col_bounds=[x - x1 for x in valid_col_centers],
         )
         (output_dir / f"{img_path.stem}.geom.json").write_text(geometry.model_dump_json(indent=2), encoding="utf-8")
+        log.debug(
+            "%s: table %dx%d px, %d rows, %d cols, skew %.3f deg",
+            img_path.name,
+            geometry.width,
+            geometry.height,
+            len(geometry.row_bounds),
+            len(geometry.col_bounds) - 1,
+            geometry.skew_angle,
+            extra={
+                "file": img_path.name,
+                "rows": len(geometry.row_bounds),
+                "cols": len(geometry.col_bounds) - 1,
+                "width": geometry.width,
+                "height": geometry.height,
+                "skew_angle": geometry.skew_angle,
+            },
+        )
 
         if draw_rows:
             grid_dir = output_dir / "grid"
