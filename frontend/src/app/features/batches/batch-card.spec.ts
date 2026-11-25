@@ -3,7 +3,8 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideRouter } from '@angular/router';
 import { signal } from '@angular/core';
-import { Subject, of } from 'rxjs';
+import { HttpErrorResponse } from '@angular/common/http';
+import { Subject, of, throwError } from 'rxjs';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 import { BatchCard } from './batch-card';
@@ -36,6 +37,10 @@ function doc(over: Partial<DocOut>): DocOut {
 }
 
 const DOCS_URL = '/api/batches/test-batch/docs?page=1&size=10';
+
+function httpError(status: number, detail?: string) {
+  return throwError(() => new HttpErrorResponse({ status, statusText: 'Conflict', error: detail ? { detail } : null }));
+}
 
 describe('BatchCard', () => {
   let fixture: ComponentFixture<BatchCard>;
@@ -292,6 +297,19 @@ describe('BatchCard', () => {
       req.flush(null);
     });
 
+    it('shows an error and keeps the card when the delete fails', () => {
+      mockConfirm(true);
+      vi.spyOn(api, 'deleteBatch').mockReturnValue(httpError(500, 'disk full'));
+      const deleted = vi.fn();
+      component.deleted.subscribe(deleted);
+
+      button('batches.delete')!.click();
+      fixture.detectChanges();
+
+      expect(deleted).not.toHaveBeenCalled();
+      expect(el().querySelector('[role="alert"]')?.textContent).toContain(t('batches.deleteFailed', { msg: 'disk full' }));
+    });
+
     it('does nothing when the confirmation is cancelled', () => {
       const confirmSpy = mockConfirm(false);
       const deleteSpy = vi.spyOn(api, 'deleteBatch');
@@ -350,6 +368,32 @@ describe('BatchCard', () => {
       fixture.detectChanges();
       expect(spy).toHaveBeenCalledWith('test-batch', { name: 'Via button' });
       expect(el().textContent).toContain('Via button');
+    });
+
+    it('shows an error and stays in edit mode when the rename fails', () => {
+      vi.spyOn(api, 'updateBatch').mockReturnValue(httpError(409, 'name taken'));
+      type(startRename(), 'Taken');
+      button('batches.save')!.click();
+      fixture.detectChanges();
+
+      expect(el().querySelector('form')).not.toBeNull();
+      expect(el().querySelector('[role="alert"]')?.textContent).toContain(t('batches.renameFailed', { msg: 'name taken' }));
+
+      button('batches.cancel')!.click();
+      fixture.detectChanges();
+      expect(el().querySelector('[role="alert"]')).toBeNull();
+    });
+
+    it('follows a later rename from another tab after renaming here', () => {
+      vi.spyOn(api, 'updateBatch').mockReturnValue(of({ ...batch, name: 'Mine' }));
+      type(startRename(), 'Mine');
+      button('batches.save')!.click();
+      fixture.detectChanges();
+      expect(el().querySelector('a')?.textContent?.trim()).toBe('Mine');
+
+      fixture.componentRef.setInput('batch', { ...batch, name: 'From other tab' });
+      fixture.detectChanges();
+      expect(el().querySelector('a')?.textContent?.trim()).toBe('From other tab');
     });
 
     it('cancels with Esc without saving', () => {
@@ -421,6 +465,16 @@ describe('BatchCard', () => {
       await render();
       expect(el().querySelector('li form')).toBeNull();
       expect(el().textContent).toContain('scan1_new.pdf');
+    });
+
+    it('shows an error and stays in edit mode when the file rename fails', async () => {
+      vi.spyOn(api, 'updateDoc').mockReturnValue(httpError(409, 'still processing'));
+      type(await startRename(), 'other');
+      el().querySelector('li form')!.dispatchEvent(new Event('submit'));
+      fixture.detectChanges();
+
+      expect(el().querySelector('li form')).not.toBeNull();
+      expect(el().querySelector('[role="alert"]')?.textContent).toContain(t('batches.renameFailed', { msg: 'still processing' }));
     });
 
     it('does not append .pdf twice (any case)', async () => {

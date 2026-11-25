@@ -6,7 +6,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideCircleCheck } from '@ng-icons/lucide';
-import { Observable, concatMap, debounceTime, of } from 'rxjs';
+import { Observable, concatMap, debounceTime, filter, of } from 'rxjs';
 
 import { Api } from '../../core/api/api.service';
 import { ColumnKey, DocDetail, FlagOut, PageRows, ReviewQueue } from '../../core/api/api.types';
@@ -258,12 +258,15 @@ export class ReviewPage {
     });
 
     // Live updates (other tabs, finished processing): refresh queue + current file.
-    inject(Realtime).events$
-      .pipe(debounceTime(500), takeUntilDestroyed(inject(DestroyRef)))
-      .subscribe((e) => {
-        if (e.type === 'review.pending') this.queue.reload();
-        if (e.type === 'doc.status' && e.doc.slug === this.slug() && !this.busy()) this.reloadDoc();
-      });
+    // Filter before debouncing, one stream per action: a burst must not drop the event we care about.
+    const events$ = inject(Realtime).events$, destroyRef = inject(DestroyRef);
+    events$
+      .pipe(filter((e) => e.type === 'review.pending'), debounceTime(500), takeUntilDestroyed(destroyRef))
+      .subscribe(() => this.queue.reload());
+    events$
+      .pipe(filter((e) => e.type === 'doc.status' && e.doc.slug === this.slug()), debounceTime(500),
+            takeUntilDestroyed(destroyRef))
+      .subscribe(() => { if (!this.busy()) this.reloadDoc(); });
     inject(DestroyRef).onDestroy(() => clearTimeout(this.undoTimer));
   }
 

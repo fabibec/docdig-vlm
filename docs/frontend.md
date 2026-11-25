@@ -73,6 +73,8 @@ Route params arrive as component inputs (`withComponentInputBinding`).
 - **Batch card:** name (links to the batch's review queue), creation time, file count, per-status badges, and open flags.
   - **Rename** (pencil icon): inline edit of the batch name, saved with Enter / ✓, cancelled with Esc / ✕ (`PATCH /api/batches/{slug}`).
   - **Delete** (trash icon): asks for confirmation, then soft-deletes the batch (`DELETE /api/batches/{slug}`). Files stay on the server.
+  - If a delete or rename fails, the card shows the server's reason below the header. A failed rename stays in edit mode.
+  - After a rename the card shows the new name at once and then follows the list again, so a later rename from another tab shows up.
 - **Expanding a card** lists its files (paginated, 10 per page) with live processing progress (step, page/pages).
   - Each file shows its LLM cost (`DocOut.total_cost`, e.g. "$0.02 (3 pages)"). Costs are only shown in the expanded list, not in the collapsed header.
   - Each file can be renamed inline (pencil icon, `PATCH /api/docs/{slug}`); a name that already exists in the batch is rejected.
@@ -82,6 +84,8 @@ Route params arrive as component inputs (`withComponentInputBinding`).
   - Accepts drag and drop, file selection, or a whole folder (`webkitdirectory`).
   - Non-PDF files are dropped silently, which matters for folder uploads.
   - Every selected file can be previewed in a new tab (external-link icon) and renamed before the upload (pencil icon).
+  - A rename to a name that is already in the list is refused with a notice; the form stays open.
+  - Each previewed file gets one blob URL. It is released when the file is removed or renamed, or when the dialog closes.
   - Duplicate names are skipped with a notice; the server returns `409 DuplicateFiles` as a second line of defence.
   - The preview is paginated, 10 per page, with sizes in B / KB / MB.
   - Upload progress is shown in %.
@@ -141,7 +145,7 @@ Layout:
   2. reopens the flags the save resolved (`POST /api/docs/{slug}/flags/reopen`);
   3. re-selects the row.
 
-**Live updates:** `review.pending` reloads the queue. `doc.status` for the open file reloads its flags, rows and detail.
+**Live updates:** `review.pending` reloads the queue. `doc.status` for the open file reloads its flags, rows and detail. Each of the two is debounced on its own (500 ms), so a burst of other events cannot swallow it.
 
 ### Document (`/:docSlug`)
 - Header: filename, batch, page count, status, and *Annotate* (opens `/review/file/:slug`).

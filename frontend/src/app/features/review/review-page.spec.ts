@@ -629,6 +629,28 @@ describe('ReviewPage', () => {
       expect(recordButtons().map((b) => b.querySelector('span')!.textContent)).toEqual(['#2', '#4', '#5', '#1']);
     });
 
+    it('handles every event of a burst, not just the last one', async () => {
+      await start();
+      server.docs['d1'].flags.push(flag({ id: 52, page: 1, row: 4, column: 'time', message: 'burst' }));
+      server.docs['d1'].flags.sort((a, b) => a.page - b.page || a.row - b.row);
+      vi.useFakeTimers();
+      rt.events$.next({ type: 'doc.status', doc: server.docOut('d1'), progress: null });
+      rt.events$.next({ type: 'doc.status', doc: server.docOut('d2'), progress: null });
+      rt.events$.next({ type: 'review.pending', files_left: 2, flags_left: 6 });
+      vi.advanceTimersByTime(500);
+      vi.useRealTimers();
+      fixture.detectChanges();
+      const urls = http.match(() => true).map((r) => {
+        const u = r.request.urlWithParams;
+        server.handle(r);
+        return u;
+      });
+      expect(urls).toContain('/api/docs/d1/flags');
+      expect(urls.some((u) => u.startsWith('/api/review'))).toBe(true);
+      await settle();
+      expect(recordButtons().map((b) => b.querySelector('span')!.textContent)).toContain('#4');
+    });
+
     it('ignores doc.status of other files', async () => {
       await start();
       emit({ type: 'doc.status', doc: server.docOut('d2'), progress: null });

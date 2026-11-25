@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, output, signal } from '@angular/core';
 import { HttpErrorResponse, HttpEventType } from '@angular/common/http';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
@@ -9,6 +9,7 @@ import { ZardButtonComponent } from '@/shared/components/button';
 import { ZardDialogImports } from '@/shared/components/dialog';
 import { Api } from '../../core/api/api.service';
 import { DuplicateFiles } from '../../core/api/api.types';
+import { httpErrorMessage } from '../../core/api/http-error';
 import { I18n, TPipe } from '../../core/i18n/i18n';
 import { FileSizePipe } from '../../shared/ui/file-size.pipe';
 import { Paginator } from '../../shared/ui/paginator';
@@ -60,7 +61,8 @@ const PREVIEW_PAGE = 10;
                   <input class="input h-7 px-2 py-0 text-sm min-w-0 flex-1"
                          [value]="editName()"
                          (input)="editName.set($any($event.target).value)"
-                         (keydown.escape)="$event.stopPropagation(); cancelRename()" />
+                         (keydown.escape)="$event.stopPropagation(); cancelRename()"
+                         [attr.aria-invalid]="renameError() ? true : null" />
                   <button type="submit" class="btn-icon size-6 text-green-600 hover:text-green-700"
                           [attr.aria-label]="'upload.save' | t" [attr.title]="'upload.save' | t">
                     <ng-icon name="lucideCheck" size="0.85rem" />
@@ -70,6 +72,9 @@ const PREVIEW_PAGE = 10;
                           [attr.aria-label]="'upload.cancel' | t" [attr.title]="'upload.cancel' | t">
                     <ng-icon name="lucideX" size="0.85rem" />
                   </button>
+                  @if (renameError(); as msg) {
+                    <span role="alert" class="text-xs text-destructive">{{ msg }}</span>
+                  }
                 </form>
               } @else {
                 <span class="min-w-0 flex-1 truncate">{{ f.name }}</span>
@@ -131,20 +136,44 @@ export class UploadDialog {
 
   readonly editingFile = signal<File | null>(null);
   readonly editName = signal('');
+  protected readonly renameError = signal('');
+
+  /** One blob URL per previewed file; revoked when the file leaves the list or the dialog closes. */
+  private readonly previewUrls = new Map<File, string>();
+
+  constructor() {
+    inject(DestroyRef).onDestroy(() => {
+      for (const url of this.previewUrls.values()) URL.revokeObjectURL(url);
+      this.previewUrls.clear();
+    });
+  }
 
   previewFile(file: File): void {
-    const url = URL.createObjectURL(file);
+    let url = this.previewUrls.get(file);
+    if (!url) {
+      url = URL.createObjectURL(file);
+      this.previewUrls.set(file, url);
+    }
     window.open(url, '_blank');
+  }
+
+  private releasePreview(file: File): void {
+    const url = this.previewUrls.get(file);
+    if (url === undefined) return;
+    URL.revokeObjectURL(url);
+    this.previewUrls.delete(file);
   }
 
   startRename(file: File): void {
     this.editingFile.set(file);
     this.editName.set(file.name);
+    this.renameError.set('');
   }
 
   cancelRename(): void {
     this.editingFile.set(null);
     this.editName.set('');
+    this.renameError.set('');
   }
 
   saveRename(oldFile: File, event?: Event): void {
@@ -157,6 +186,16 @@ export class UploadDialog {
     if (!/\.pdf$/i.test(newName)) {
       newName += '.pdf';
     }
+    if (newName === oldFile.name) {
+      this.cancelRename();
+      return;
+    }
+    // Same rule as add(): names must be unique in the list (the server rejects duplicates too).
+    if (this.files().some((f) => f !== oldFile && f.name === newName)) {
+      this.renameError.set(this.i18n.t('upload.renameDuplicate', { name: newName }));
+      return;
+    }
+    this.releasePreview(oldFile);
     const renamed = new File([oldFile], newName, { type: oldFile.type, lastModified: oldFile.lastModified });
     this.files.update((cur) => cur.map((f) => (f === oldFile ? renamed : f)));
     this.cancelRename();
@@ -179,6 +218,7 @@ export class UploadDialog {
     if (this.editingFile() === file) {
       this.cancelRename();
     }
+    this.releasePreview(file);
     this.files.update((cur) => cur.filter((f) => f !== file));
     const last = Math.max(1, Math.ceil(this.files().length / PREVIEW_PAGE));
     if (this.page() > last) this.page.set(last);
@@ -198,12 +238,11 @@ export class UploadDialog {
       },
       error: (err: HttpErrorResponse) => {
         this.progress.set(null);
-        const body = err.error as DuplicateFiles | { detail?: unknown } | null;
+        const body = err.error as DuplicateFiles | null;
         if (err.status === 409 && body && 'filenames' in body) {
           this.error.set(this.i18n.t('upload.serverDuplicates', { names: body.filenames.join(', ') }));
         } else {
-          const msg = typeof body?.detail === 'string' ? body.detail : err.statusText || String(err.status);
-          this.error.set(this.i18n.t('upload.failed', { msg }));
+          this.error.set(this.i18n.t('upload.failed', { msg: httpErrorMessage(err) }));
         }
       },
     });

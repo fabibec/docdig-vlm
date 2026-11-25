@@ -135,6 +135,39 @@ describe('UploadDialog', () => {
     });
   });
 
+  describe('preview blob URLs', () => {
+    function spies() {
+      let n = 0;
+      const create = vi.spyOn(URL, 'createObjectURL').mockImplementation(() => `blob:test/${++n}`);
+      const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+      vi.spyOn(window, 'open').mockImplementation(() => null);
+      return { create, revoke };
+    }
+
+    it('reuses one URL per file', () => {
+      const { create } = spies();
+      byLabel('upload.preview')[0].click();
+      byLabel('upload.preview')[0].click();
+      expect(create).toHaveBeenCalledOnce();
+    });
+
+    it('revokes the URL when the file is removed', () => {
+      const { revoke } = spies();
+      byLabel('upload.preview')[0].click();
+      byLabel('upload.remove')[0].click();
+      fixture.detectChanges();
+      expect(revoke).toHaveBeenCalledWith('blob:test/1');
+    });
+
+    it('revokes all URLs when the dialog is destroyed', () => {
+      const { revoke } = spies();
+      byLabel('upload.preview')[0].click();
+      byLabel('upload.preview')[2].click();
+      fixture.destroy();
+      expect(revoke.mock.calls.map((c) => c[0]).sort()).toEqual(['blob:test/1', 'blob:test/2']);
+    });
+  });
+
   describe('rename before upload', () => {
     function startRename(index = 0): HTMLInputElement {
       byLabel('upload.rename')[index].click();
@@ -181,6 +214,22 @@ describe('UploadDialog', () => {
       startRename();
       submit('already_fine.PDF');
       expect(component.files()[0].name).toBe('already_fine.PDF');
+    });
+
+    it('refuses a name that another file in the list already has', () => {
+      startRename();
+      submit('second_doc');
+
+      expect(component.files()).toEqual([file1, file2, file3]);
+      expect(component.editingFile()).toBe(file1);
+      expect(q('li form')!.textContent).toContain(t('upload.renameDuplicate', { name: 'second_doc.pdf' }));
+    });
+
+    it('accepts the unchanged own name', () => {
+      startRename();
+      submit('first_doc.pdf');
+      expect(component.editingFile()).toBeNull();
+      expect(component.files()[0].name).toBe('first_doc.pdf');
     });
 
     it('keeps the name when the input is blank', () => {

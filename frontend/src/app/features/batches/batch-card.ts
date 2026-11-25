@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, input, linkedSignal, output, signal } from '@angular/core';
 import { httpResource } from '@angular/common/http';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NgTemplateOutlet } from '@angular/common';
@@ -12,6 +12,7 @@ import { debounceTime, filter } from 'rxjs';
 import { ZardAlertDialogService } from '@/shared/components/alert-dialog';
 import { Api } from '../../core/api/api.service';
 import { BatchOut, DocOut, DocStatus, Paginated } from '../../core/api/api.types';
+import { httpErrorMessage } from '../../core/api/http-error';
 import { I18n, TPipe } from '../../core/i18n/i18n';
 import { Realtime } from '../../core/realtime/realtime.service';
 import { Paginator } from '../../shared/ui/paginator';
@@ -79,6 +80,10 @@ const STATUSES: DocStatus[] = ['review', 'processing', 'queued', 'done', 'error'
           <ng-icon name="lucideTrash2" size="0.95rem" />
         </button>
       </div>
+
+      @if (actionError(); as msg) {
+        <p role="alert" class="mx-3 mb-3 rounded-md bg-destructive/15 p-2 text-xs text-destructive">{{ msg }}</p>
+      }
 
       @if (expanded()) {
         @if (docs.hasValue()) {
@@ -169,8 +174,10 @@ export class BatchCard {
   protected statuses = STATUSES;
   protected readonly expanded = signal(false);
   protected readonly page = signal(1);
-  protected readonly batchName = signal<string | null>(null);
-  protected readonly currentBatchName = computed(() => this.batchName() ?? this.batch().name);
+  /** Shows our own rename at once; resets to the input when the list reloads (e.g. a rename from another tab). */
+  protected readonly currentBatchName = linkedSignal(() => this.batch().name);
+  /** Last failed delete/rename, shown below the header until the next action. */
+  protected readonly actionError = signal<string | null>(null);
   protected readonly editingBatch = signal(false);
   protected readonly batchNameInput = signal('');
 
@@ -201,6 +208,7 @@ export class BatchCard {
 
   protected onDelete(event: Event): void {
     event.stopPropagation();
+    this.actionError.set(null);
     this.alertDialog.confirm({
       zTitle: this.i18n.t('batches.delete'),
       zDescription: this.i18n.t('batches.deleteConfirm'),
@@ -210,6 +218,7 @@ export class BatchCard {
       zOnOk: () => {
         this.api.deleteBatch(this.batch().slug).subscribe({
           next: () => this.deleted.emit(),
+          error: (err: unknown) => this.actionError.set(this.i18n.t('batches.deleteFailed', { msg: httpErrorMessage(err) })),
         });
       },
     });
@@ -218,10 +227,12 @@ export class BatchCard {
   protected startBatchRename(event?: Event): void {
     event?.stopPropagation();
     this.batchNameInput.set(this.currentBatchName());
+    this.actionError.set(null);
     this.editingBatch.set(true);
   }
 
   protected cancelBatchRename(): void {
+    this.actionError.set(null);
     this.editingBatch.set(false);
   }
 
@@ -235,9 +246,10 @@ export class BatchCard {
     }
     this.api.updateBatch(this.batch().slug, { name: newName }).subscribe({
       next: (updated) => {
-        this.batchName.set(updated.name);
-        this.editingBatch.set(false);
+        this.currentBatchName.set(updated.name);
+        this.cancelBatchRename();
       },
+      error: (err: unknown) => this.actionError.set(this.i18n.t('batches.renameFailed', { msg: httpErrorMessage(err) })),
     });
   }
 
@@ -245,9 +257,11 @@ export class BatchCard {
     event?.stopPropagation();
     this.editingDocSlug.set(doc.slug);
     this.docNameInput.set(doc.filename);
+    this.actionError.set(null);
   }
 
   protected cancelDocRename(): void {
+    this.actionError.set(null);
     this.editingDocSlug.set(null);
     this.docNameInput.set('');
   }
@@ -272,6 +286,7 @@ export class BatchCard {
         this.cancelDocRename();
         this.docs.reload();
       },
+      error: (err: unknown) => this.actionError.set(this.i18n.t('batches.renameFailed', { msg: httpErrorMessage(err) })),
     });
   }
 
