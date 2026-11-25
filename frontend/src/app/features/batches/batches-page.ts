@@ -1,10 +1,10 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
 import { httpResource } from '@angular/common/http';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { debounceTime, filter } from 'rxjs';
 
 import { Api } from '../../core/api/api.service';
-import { BatchOut, Paginated } from '../../core/api/api.types';
+import type { BatchOut, Paginated } from '../../core/api/api.types';
 import { TPipe } from '../../core/i18n/i18n';
 import { Realtime } from '../../core/realtime/realtime.service';
 import { EmptyState } from '../../shared/ui/empty-state';
@@ -53,13 +53,21 @@ export class BatchesPage {
   protected size = PAGE_SIZE;
   protected readonly page = signal(1);
   protected readonly dialog = signal(false);
-  protected batches = httpResource<Paginated<BatchOut>>(() => this.api.batchesUrl(this.page(), PAGE_SIZE));
+  protected batches = httpResource<Paginated<BatchOut>>(() =>
+    this.api.batchesUrl(this.page(), PAGE_SIZE),
+  );
 
   constructor() {
     // New batches / status counts: refetch the current page (debounced, events come in bursts).
-    inject(Realtime).events$
-      .pipe(filter((e) => e.type === 'batch.created' || e.type === 'batch.updated' || e.type === 'batch.deleted'), debounceTime(400),
-            takeUntilDestroyed(inject(DestroyRef)))
+    inject(Realtime)
+      .events$.pipe(
+        filter(
+          (e) =>
+            e.type === 'batch.created' || e.type === 'batch.updated' || e.type === 'batch.deleted',
+        ),
+        debounceTime(400),
+        takeUntilDestroyed(inject(DestroyRef)),
+      )
       .subscribe(() => this.batches.reload());
   }
 }

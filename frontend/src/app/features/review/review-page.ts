@@ -1,21 +1,36 @@
-import {
-  ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, input, linkedSignal, signal, untracked,
-} from '@angular/core';
 import { httpResource } from '@angular/common/http';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  DestroyRef,
+  effect,
+  inject,
+  input,
+  linkedSignal,
+  signal,
+  untracked,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideCircleCheck } from '@ng-icons/lucide';
-import { Observable, concatMap, debounceTime, filter, of } from 'rxjs';
+import { concatMap, debounceTime, filter, type Observable, of } from 'rxjs';
 
 import { Api } from '../../core/api/api.service';
-import { ColumnKey, DocDetail, FlagOut, PageRows, ReviewQueue } from '../../core/api/api.types';
+import type {
+  ColumnKey,
+  DocDetail,
+  FlagOut,
+  PageRows,
+  ReviewQueue,
+} from '../../core/api/api.types';
 import { I18n, TPipe } from '../../core/i18n/i18n';
 import { Realtime } from '../../core/realtime/realtime.service';
 import { EmptyState } from '../../shared/ui/empty-state';
-import { CellRef, PipelineViewer, ViewerStep } from '../../shared/ui/pipeline-viewer';
-import { flagText, NoteDraft, RecordEditor, ReviewRecord } from './record-editor';
-import { PageDraft, SplitReview } from './split-review';
+import { type CellRef, PipelineViewer, type ViewerStep } from '../../shared/ui/pipeline-viewer';
+import { flagText, type NoteDraft, RecordEditor, type ReviewRecord } from './record-editor';
+import { type PageDraft, SplitReview } from './split-review';
 
 type Draft = Partial<Record<ColumnKey, string>>;
 
@@ -174,7 +189,9 @@ export class ReviewPage {
   readonly batchSlug = input<string>();
   readonly docSlug = input<string>();
 
-  protected queue = httpResource<ReviewQueue>(() => this.api.reviewUrl({ batch: this.batchSlug(), doc: this.docSlug() }));
+  protected queue = httpResource<ReviewQueue>(() =>
+    this.api.reviewUrl({ batch: this.batchSlug(), doc: this.docSlug() }),
+  );
 
   /** File picked in the selector; falls back to the oldest file in the queue. A single-file route always shows its file. */
   protected readonly chosen = signal<string | null>(null);
@@ -185,8 +202,12 @@ export class ReviewPage {
     return docs.find((d) => d.slug === this.chosen())?.slug ?? docs[0]?.slug ?? null;
   });
 
-  protected detail = httpResource<DocDetail>(() => (this.slug() ? this.api.docUrl(this.slug()!) : undefined));
-  protected flags = httpResource<FlagOut[]>(() => (this.slug() ? this.api.allFlagsUrl(this.slug()!) : undefined));
+  protected detail = httpResource<DocDetail>(() =>
+    this.slug() ? this.api.docUrl(this.slug()!) : undefined,
+  );
+  protected flags = httpResource<FlagOut[]>(() =>
+    this.slug() ? this.api.allFlagsUrl(this.slug()!) : undefined,
+  );
   protected readonly splitMode = signal(false);
 
   protected readonly records = computed<ReviewRecord[]>(() => {
@@ -213,12 +234,17 @@ export class ReviewPage {
   private readonly picked = signal<ReviewRecord | null>(null);
   protected readonly selected = computed(() => {
     const key = this.selectedKey();
-    return this.records().find((r) => r.key === key) ?? (this.picked()?.key === key ? this.picked() : null);
+    return (
+      this.records().find((r) => r.key === key) ??
+      (this.picked()?.key === key ? this.picked() : null)
+    );
   });
 
   protected readonly page = linkedSignal<number>(() => (this.slug() ? 1 : 1));
   protected readonly step = signal<ViewerStep>('cropped');
-  protected rows = httpResource<PageRows>(() => (this.slug() ? this.api.rowsUrl(this.slug()!, this.page()) : undefined));
+  protected rows = httpResource<PageRows>(() =>
+    this.slug() ? this.api.rowsUrl(this.slug()!, this.page()) : undefined,
+  );
 
   /** Unsaved edits of the selected record; merged into the viewer rows for a live step-3 preview. */
   protected readonly draft = signal<Draft>({});
@@ -235,17 +261,29 @@ export class ReviewPage {
     if (!sel || !this.rows.hasValue() || this.rows.value().num !== sel.page) return null;
     return this.rows.value().rows.find((r) => r.idx === sel.row)?.values ?? null;
   });
-  protected readonly editorValues = computed<Draft>(() => ({ ...(this.selectedRowValues() ?? {}), ...this.draft() }));
+  protected readonly editorValues = computed<Draft>(() => ({
+    ...(this.selectedRowValues() ?? {}),
+    ...this.draft(),
+  }));
 
   protected readonly viewRows = computed<PageRows | null>(() => {
     if (!this.rows.hasValue()) return null;
-    const r = this.rows.value(), sel = this.selected(), draft = this.draft();
+    const r = this.rows.value(),
+      sel = this.selected(),
+      draft = this.draft();
     if (!sel || sel.page !== r.num || !Object.keys(draft).length) return r;
-    return { ...r, rows: r.rows.map((row) => (row.idx === sel.row ? { ...row, values: { ...row.values, ...draft } } : row)) };
+    return {
+      ...r,
+      rows: r.rows.map((row) =>
+        row.idx === sel.row ? { ...row, values: { ...row.values, ...draft } } : row,
+      ),
+    };
   });
 
   protected readonly flaggedCells = computed<CellRef[]>(() =>
-    this.records().filter((r) => r.page === this.page()).flatMap((r) => r.flags.map((f) => ({ row: f.row, column: f.column }))),
+    this.records()
+      .filter((r) => r.page === this.page())
+      .flatMap((r) => r.flags.map((f) => ({ row: f.row, column: f.column }))),
   );
 
   constructor() {
@@ -259,14 +297,24 @@ export class ReviewPage {
 
     // Live updates (other tabs, finished processing): refresh queue + current file.
     // Filter before debouncing, one stream per action: a burst must not drop the event we care about.
-    const events$ = inject(Realtime).events$, destroyRef = inject(DestroyRef);
+    const events$ = inject(Realtime).events$,
+      destroyRef = inject(DestroyRef);
     events$
-      .pipe(filter((e) => e.type === 'review.pending'), debounceTime(500), takeUntilDestroyed(destroyRef))
+      .pipe(
+        filter((e) => e.type === 'review.pending'),
+        debounceTime(500),
+        takeUntilDestroyed(destroyRef),
+      )
       .subscribe(() => this.queue.reload());
     events$
-      .pipe(filter((e) => e.type === 'doc.status' && e.doc.slug === this.slug()), debounceTime(500),
-            takeUntilDestroyed(destroyRef))
-      .subscribe(() => { if (!this.busy()) this.reloadDoc(); });
+      .pipe(
+        filter((e) => e.type === 'doc.status' && e.doc.slug === this.slug()),
+        debounceTime(500),
+        takeUntilDestroyed(destroyRef),
+      )
+      .subscribe(() => {
+        if (!this.busy()) this.reloadDoc();
+      });
     inject(DestroyRef).onDestroy(() => clearTimeout(this.undoTimer));
   }
 
@@ -282,7 +330,8 @@ export class ReviewPage {
 
   /** Click on any row/cell in the viewer: open its record, or an empty one for unflagged rows. */
   protected pick(cell: CellRef): void {
-    const page = this.page(), key = `${page}:${cell.row}`;
+    const page = this.page(),
+      key = `${page}:${cell.row}`;
     const existing = this.records().find((r) => r.key === key);
     if (existing) {
       if (existing.key !== this.selectedKey()) this.select(existing, cell.column);
@@ -298,7 +347,8 @@ export class ReviewPage {
   }
 
   private nextAfter(current: ReviewRecord): ReviewRecord | null {
-    const recs = this.records(), i = recs.findIndex((r) => r.key === current.key);
+    const recs = this.records(),
+      i = recs.findIndex((r) => r.key === current.key);
     return recs[i + 1] ?? recs.find((r) => r.key !== current.key) ?? null;
   }
 
@@ -333,18 +383,22 @@ export class ReviewPage {
   }
 
   protected savePage(pageDraft: PageDraft): void {
-    const slug = this.slug(), curPage = this.page();
+    const slug = this.slug(),
+      curPage = this.page();
     if (!slug || this.busy()) return;
-    const currentRows = this.rows.hasValue() && this.rows.value().num === curPage ? this.rows.value().rows : [];
+    const currentRows =
+      this.rows.hasValue() && this.rows.value().num === curPage ? this.rows.value().rows : [];
     const beforePage: PageDraft = {};
     for (const idxStr of Object.keys(pageDraft)) {
       const idx = Number(idxStr);
       const orig = currentRows.find((r) => r.idx === idx)?.values;
       if (orig) beforePage[idx] = { ...orig };
     }
-    const nextFlaggedPage = (this.detail.hasValue() ? this.detail.value().pages : [])
-      .filter((p) => p.num !== curPage && p.open_flags > 0)
-      .sort((a, b) => (a.num > curPage ? -1 : 1) - (b.num > curPage ? -1 : 1) || a.num - b.num)[0]?.num ?? null;
+    const nextFlaggedPage =
+      (this.detail.hasValue() ? this.detail.value().pages : [])
+        .filter((p) => p.num !== curPage && p.open_flags > 0)
+        .sort((a, b) => (a.num > curPage ? -1 : 1) - (b.num > curPage ? -1 : 1) || a.num - b.num)[0]
+        ?.num ?? null;
 
     this.saveError.set(false);
     this.busy.set(true);
@@ -396,7 +450,8 @@ export class ReviewPage {
   }
 
   protected save(): void {
-    const cur = this.selected(), slug = this.slug();
+    const cur = this.selected(),
+      slug = this.slug();
     if (!cur || !slug || this.busy()) return;
     const next = this.nextAfter(cur);
     const before = { ...(this.selectedRowValues() ?? {}) };
@@ -405,7 +460,13 @@ export class ReviewPage {
     this.api.resolveRow(slug, cur.page, cur.row, { values: this.draft() }).subscribe({
       next: (res) => {
         this.busy.set(false);
-        this.offerUndo({ slug, page: cur.page, row: cur.row, before, flagIds: res.resolved_flag_ids });
+        this.offerUndo({
+          slug,
+          page: cur.page,
+          row: cur.row,
+          before,
+          flagIds: res.resolved_flag_ids,
+        });
         this.picked.set(null);
         if (next) {
           this.select(next);
@@ -437,9 +498,10 @@ export class ReviewPage {
     if (!ls) return;
     clearTimeout(this.undoTimer);
     this.lastSave.set(null);
-    const restore$ = ls.row !== undefined
-      ? this.api.resolveRow(ls.slug, ls.page, ls.row, { values: ls.before ?? {} })
-      : this.api.resolvePage(ls.slug, ls.page, { rows: ls.beforePage ?? {} });
+    const restore$ =
+      ls.row !== undefined
+        ? this.api.resolveRow(ls.slug, ls.page, ls.row, { values: ls.before ?? {} })
+        : this.api.resolvePage(ls.slug, ls.page, { rows: ls.beforePage ?? {} });
     const call = restore$.pipe(
       concatMap((res) => (ls.flagIds.length ? this.api.reopenFlags(ls.slug, ls.flagIds) : of(res))),
     );
@@ -457,13 +519,22 @@ export class ReviewPage {
   protected addNote(rec: ReviewRecord, note: NoteDraft): void {
     const slug = this.slug();
     if (!slug) return;
-    this.run(this.api.createFlag(slug, { page: rec.page, row: rec.row, column: note.column, message: note.message }), () => {
-      this.selectedKey.set(rec.key); // the picked row now becomes a real record (same key)
-    });
+    this.run(
+      this.api.createFlag(slug, {
+        page: rec.page,
+        row: rec.row,
+        column: note.column,
+        message: note.message,
+      }),
+      () => {
+        this.selectedKey.set(rec.key); // the picked row now becomes a real record (same key)
+      },
+    );
   }
 
   protected deleteNote(id: number): void {
-    const slug = this.slug(), sel = this.selected();
+    const slug = this.slug(),
+      sel = this.selected();
     if (!slug) return;
     // Keep the row selected even if this was its last open flag.
     if (sel) this.picked.set({ ...sel, flags: [] });
@@ -475,7 +546,8 @@ export class ReviewPage {
   }
 
   protected species(r: ReviewRecord): string {
-    const rows = this.rows.hasValue() && this.rows.value().num === r.page ? this.rows.value().rows : [];
+    const rows =
+      this.rows.hasValue() && this.rows.value().num === r.page ? this.rows.value().rows : [];
     return rows.find((x) => x.idx === r.row)?.values.species ?? '';
   }
 

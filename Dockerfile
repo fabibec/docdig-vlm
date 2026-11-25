@@ -5,10 +5,12 @@
 # Pinned: Node >= 26.12.1 fixes the Brotli RCE (CVE-2026-111497). Keep in sync with test:frontend in CI.
 FROM node:26.13.0-trixie-slim AS web
 WORKDIR /web
-COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci --no-audit --no-fund
+# Keep the pnpm version in sync with "packageManager" in frontend/package.json.
+RUN npm install -g --no-audit --no-fund pnpm@12.15.0
+COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
+RUN --mount=type=cache,id=pnpm,target=/pnpm-store pnpm install --frozen-lockfile --store-dir /pnpm-store
 COPY frontend/ ./
-RUN npm run build
+RUN pnpm build
 
 # ---------- 2) python dependencies (runtime set only, no OCR/dev groups) ----------
 FROM python:3.12-slim-trixie AS py

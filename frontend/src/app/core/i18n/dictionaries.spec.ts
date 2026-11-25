@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import { de } from './de';
 import { en } from './en';
@@ -17,12 +17,16 @@ describe('i18n dictionaries', () => {
       });
 
       it('has no empty texts', () => {
-        const empty = Object.entries(dict).filter(([, v]) => typeof v !== 'string' || !v.trim()).map(([k]) => k);
+        const empty = Object.entries(dict)
+          .filter(([, v]) => typeof v !== 'string' || !v.trim())
+          .map(([k]) => k);
         expect(empty).toEqual([]);
       });
 
       it('uses the same {placeholders} as de.ts', () => {
-        const mismatched = deKeys.filter((k) => placeholders(dict[k]).join() !== placeholders(de[k as keyof typeof de]).join());
+        const mismatched = deKeys.filter(
+          (k) => placeholders(dict[k]).join() !== placeholders(de[k as keyof typeof de]).join(),
+        );
         expect(mismatched).toEqual([]);
       });
     });
@@ -30,8 +34,18 @@ describe('i18n dictionaries', () => {
 
   it('provides a label for every column and status', () => {
     const required = [
-      'ring_no', 'species', 'sex', 'age', 'date', 'time', 'wing_length_mm', 'weight_g', 'additional_remark',
-    ].map((c) => `col.${c}`).concat(['queued', 'processing', 'review', 'done', 'error'].map((s) => `status.${s}`));
+      'ring_no',
+      'species',
+      'sex',
+      'age',
+      'date',
+      'time',
+      'wing_length_mm',
+      'weight_g',
+      'additional_remark',
+    ]
+      .map((c) => `col.${c}`)
+      .concat(['queued', 'processing', 'review', 'done', 'error'].map((s) => `status.${s}`));
     for (const key of required) expect(deKeys).toContain(key);
   });
 });

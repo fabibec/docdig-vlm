@@ -1,4 +1,4 @@
-import { Dictionary } from './de';
+import type { Dictionary } from './de';
 
 export const fr: Dictionary = {
   'app.reviewQueue': 'File de révision',
@@ -87,7 +87,8 @@ export const fr: Dictionary = {
   'review.doneText': 'Tous les enregistrements de cette sélection ont été vérifiés.',
   'review.backHome': 'Retour à l’aperçu',
   'review.saveFailed': 'L’enregistrement a échoué.',
-  'review.noFlags': 'Aucun signalement ouvert sur cette ligne. Vous pouvez corriger des valeurs ou ajouter une note.',
+  'review.noFlags':
+    'Aucun signalement ouvert sur cette ligne. Vous pouvez corriger des valeurs ou ajouter une note.',
   'review.clickHint': 'Cliquez sur une ligne dans la visionneuse pour la corriger ou l’annoter.',
   'review.addNote': 'Ajouter une note',
   'review.notePlaceholder': 'Que faut-il vérifier ici ?',
@@ -101,7 +102,8 @@ export const fr: Dictionary = {
   'review.splitView': 'Ouvrir la vue partagée',
   'review.columnView': 'Ouvrir la vue en colonnes',
   'review.resolveCell': 'Marquer comme vérifié',
-  'review.unresolvedWarn': 'Il reste {n} signalement(s) non confirmé(s) sur cette page. Enregistrer quand même et tout marquer comme résolu ?',
+  'review.unresolvedWarn':
+    'Il reste {n} signalement(s) non confirmé(s) sur cette page. Enregistrer quand même et tout marquer comme résolu ?',
   'review.saveAnyway': 'Enregistrer quand même',
   'source.llm': 'IA',
   'source.rule': 'Règle',

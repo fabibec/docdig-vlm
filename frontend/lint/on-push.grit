@@ -1,0 +1,6 @@
+language js
+
+`@Component($args)` as $decorator where {
+  not $args <: contains `ChangeDetectionStrategy.OnPush`,
+  register_diagnostic(span=$decorator, message="Components must use changeDetection: ChangeDetectionStrategy.OnPush.")
+}

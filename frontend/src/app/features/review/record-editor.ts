@@ -1,14 +1,31 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, model, output, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+  model,
+  output,
+  signal,
+} from '@angular/core';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucidePlus, lucideTrash2 } from '@ng-icons/lucide';
 
-import { ColumnKey, COLUMNS, FlagOut } from '../../core/api/api.types';
+import { COLUMNS, type ColumnKey, type FlagOut } from '../../core/api/api.types';
 import { I18n, TPipe } from '../../core/i18n/i18n';
 
 /** One table row (record) under review = all open flags sharing (page, row); may have none (row picked by hand). */
-export interface ReviewRecord { key: string; page: number; row: number; flags: FlagOut[] }
+export interface ReviewRecord {
+  key: string;
+  page: number;
+  row: number;
+  flags: FlagOut[];
+}
 
-export interface NoteDraft { column: ColumnKey | null; message: string }
+export interface NoteDraft {
+  column: ColumnKey | null;
+  message: string;
+}
 
 /** Human readable flag text: translated rule codes, LLM / user messages as-is. */
 export function flagText(i18n: I18n, f: FlagOut): string {
@@ -144,7 +161,14 @@ export class RecordEditor {
 
   protected columns = COLUMNS;
   protected readonly noteText = signal('');
-  protected readonly flagged = computed(() => new Set(this.record().flags.map((f) => f.column).filter((c) => c !== null)));
+  protected readonly flagged = computed(
+    () =>
+      new Set(
+        this.record()
+          .flags.map((f) => f.column)
+          .filter((c) => c !== null),
+      ),
+  );
 
   protected text(f: FlagOut): string {
     return flagText(this.i18n, f);

@@ -1,28 +1,47 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-
-import { DocumentPage } from './document-page';
-import { ColumnKey, COLUMNS, DocDetail, PageRows } from '../../core/api/api.types';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { COLUMNS, type ColumnKey, type DocDetail, type PageRows } from '../../core/api/api.types';
 import { I18n } from '../../core/i18n/i18n';
+import { DocumentPage } from './document-page';
 
 function detail(over: Partial<DocDetail> = {}): DocDetail {
   return {
-    slug: 'd1', batch_slug: 'b1', batch_name: 'Spring 2026', filename: 'scan1.pdf', status: 'done', num_pages: 2,
-    open_flags: 0, error: null, updated_at: '', artifact_url: '',
-    pages: [{ num: 1, open_flags: 0, page_confidence: 0.9 }, { num: 2, open_flags: 0, page_confidence: 0.8 }],
+    slug: 'd1',
+    batch_slug: 'b1',
+    batch_name: 'Spring 2026',
+    filename: 'scan1.pdf',
+    status: 'done',
+    num_pages: 2,
+    open_flags: 0,
+    error: null,
+    updated_at: '',
+    artifact_url: '',
+    pages: [
+      { num: 1, open_flags: 0, page_confidence: 0.9 },
+      { num: 2, open_flags: 0, page_confidence: 0.8 },
+    ],
     ...over,
   };
 }
 
 function rows(num: number): PageRows {
   const values = Object.fromEntries(COLUMNS.map((c) => [c, ''])) as Record<ColumnKey, string>;
-  const column_x = Object.fromEntries(COLUMNS.map((c, i) => [c, [i * 10, i * 10 + 10]])) as Record<ColumnKey, [number, number]>;
+  const column_x = Object.fromEntries(COLUMNS.map((c, i) => [c, [i * 10, i * 10 + 10]])) as Record<
+    ColumnKey,
+    [number, number]
+  >;
   return {
-    num, width: 100, height: 100, columns: COLUMNS, column_x,
-    rows: [{ idx: 1, y0: 0, y1: 10, values: { ...values, species: `Amsel p${num}` }, corrected: [] }],
+    num,
+    width: 100,
+    height: 100,
+    columns: COLUMNS,
+    column_x,
+    rows: [
+      { idx: 1, y0: 0, y1: 10, values: { ...values, species: `Amsel p${num}` }, corrected: [] },
+    ],
   };
 }
 
@@ -72,7 +91,9 @@ describe('DocumentPage', () => {
 
   it('links Annotate to the review page of the file', async () => {
     await load(detail());
-    const annotate = [...el().querySelectorAll('a')].find((a) => a.textContent?.trim() === t('doc.annotate'))!;
+    const annotate = [...el().querySelectorAll('a')].find(
+      (a) => a.textContent?.trim() === t('doc.annotate'),
+    )!;
     expect(annotate.getAttribute('href')).toBe('/review/file/d1');
   });
 
@@ -106,8 +127,12 @@ describe('DocumentPage', () => {
   it('shows "not found" when the document cannot be loaded', async () => {
     fixture.componentRef.setInput('docSlug', 'missing');
     fixture.detectChanges();
-    http.expectOne('/api/docs/missing').flush({ detail: 'not found' }, { status: 404, statusText: 'Not Found' });
-    http.expectOne('/api/docs/missing/page/1/rows').flush({ detail: 'not found' }, { status: 404, statusText: 'Not Found' });
+    http
+      .expectOne('/api/docs/missing')
+      .flush({ detail: 'not found' }, { status: 404, statusText: 'Not Found' });
+    http
+      .expectOne('/api/docs/missing/page/1/rows')
+      .flush({ detail: 'not found' }, { status: 404, statusText: 'Not Found' });
     await render();
     expect(el().textContent).toContain(t('doc.notFound'));
   });

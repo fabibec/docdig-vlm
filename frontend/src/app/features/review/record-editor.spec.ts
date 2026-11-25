@@ -1,14 +1,24 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-
-import { flagText, NoteDraft, RecordEditor, ReviewRecord } from './record-editor';
-import { ColumnKey, COLUMNS, FlagOut } from '../../core/api/api.types';
+import { type ComponentFixture, TestBed } from '@angular/core/testing';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { COLUMNS, type ColumnKey, type FlagOut } from '../../core/api/api.types';
 import { I18n } from '../../core/i18n/i18n';
+import { flagText, type NoteDraft, RecordEditor, type ReviewRecord } from './record-editor';
 
 function flag(over: Partial<FlagOut>): FlagOut {
   return {
-    id: 1, page: 1, row: 1, column: 'species', source: 'llm', severity: 'warning', code: null, params: {},
-    message: 'unclear', suggestion: null, confidence: null, resolved: false, ...over,
+    id: 1,
+    page: 1,
+    row: 1,
+    column: 'species',
+    source: 'llm',
+    severity: 'warning',
+    code: null,
+    params: {},
+    message: 'unclear',
+    suggestion: null,
+    confidence: null,
+    resolved: false,
+    ...over,
   };
 }
 
@@ -18,18 +28,33 @@ describe('RecordEditor', () => {
   let i18n: I18n;
   let t: I18n['t'];
   const el = () => fixture.nativeElement as HTMLElement;
-  const buttonByText = (text: string) => [...el().querySelectorAll('button')].find((b) => b.textContent?.trim() === text);
+  const buttonByText = (text: string) =>
+    [...el().querySelectorAll('button')].find((b) => b.textContent?.trim() === text);
 
   const llm = flag({
-    id: 1, column: 'species', source: 'llm', message: 'Hard to read', params: { value: 'Amsl' }, confidence: 0.42, suggestion: 'Amsel',
+    id: 1,
+    column: 'species',
+    source: 'llm',
+    message: 'Hard to read',
+    params: { value: 'Amsl' },
+    confidence: 0.42,
+    suggestion: 'Amsel',
   });
   const rule = flag({
-    id: 2, column: 'weight_g', source: 'rule', severity: 'error', code: 'weight_out_of_range', params: { value: '300', min: 5, max: 40 },
+    id: 2,
+    column: 'weight_g',
+    source: 'rule',
+    severity: 'error',
+    code: 'weight_out_of_range',
+    params: { value: '300', min: 5, max: 40 },
     message: 'raw backend text',
   });
   const note = flag({ id: 3, column: null, source: 'user', message: 'Check ring number' });
 
-  function render(record: ReviewRecord, values: Partial<Record<ColumnKey, string>> = { species: 'Amsl', weight_g: '300' }) {
+  function render(
+    record: ReviewRecord,
+    values: Partial<Record<ColumnKey, string>> = { species: 'Amsl', weight_g: '300' },
+  ) {
     fixture.componentRef.setInput('record', record);
     fixture.componentRef.setInput('values', values);
     fixture.detectChanges();
@@ -46,11 +71,16 @@ describe('RecordEditor', () => {
   });
 
   it('shows page and row', () => {
-    expect(el().textContent).toContain(`${t('review.page', { n: 1 })} · ${t('review.row', { n: 4 })}`);
+    expect(el().textContent).toContain(
+      `${t('review.page', { n: 1 })} · ${t('review.row', { n: 4 })}`,
+    );
   });
 
   describe('flags', () => {
-    const blocks = () => [...el().querySelectorAll<HTMLElement>('div.rounded-md.border')].filter((d) => d.querySelector('[class*="uppercase"]'));
+    const blocks = () =>
+      [...el().querySelectorAll<HTMLElement>('div.rounded-md.border')].filter((d) =>
+        d.querySelector('[class*="uppercase"]'),
+      );
 
     it('shows one block per flag with its source label', () => {
       const b = blocks();
@@ -63,7 +93,9 @@ describe('RecordEditor', () => {
     it('translates rule flags from code and params; AI and note messages are shown as written', () => {
       const b = blocks();
       expect(b[0].textContent).toContain('Hard to read');
-      expect(b[1].textContent).toContain(t('flag.weight_out_of_range', { value: '300', min: 5, max: 40 }));
+      expect(b[1].textContent).toContain(
+        t('flag.weight_out_of_range', { value: '300', min: 5, max: 40 }),
+      );
       expect(b[1].textContent).not.toContain('raw backend text');
       expect(b[2].textContent).toContain('Check ring number');
     });
@@ -95,7 +127,9 @@ describe('RecordEditor', () => {
     it('offers delete only for reviewer notes', () => {
       const del = vi.fn();
       editor.deleteNote.subscribe(del);
-      const buttons = el().querySelectorAll<HTMLButtonElement>(`button[aria-label="${t('review.deleteNote')}"]`);
+      const buttons = el().querySelectorAll<HTMLButtonElement>(
+        `button[aria-label="${t('review.deleteNote')}"]`,
+      );
       expect(buttons.length).toBe(1);
       buttons[0].click();
       expect(del).toHaveBeenCalledWith(3);
@@ -131,7 +165,8 @@ describe('RecordEditor', () => {
     });
 
     it('Save & next emits save, Skip emits skip', () => {
-      const save = vi.fn(), skip = vi.fn();
+      const save = vi.fn(),
+        skip = vi.fn();
       editor.save.subscribe(save);
       editor.skip.subscribe(skip);
       buttonByText(t('review.save'))!.click();
@@ -216,9 +251,14 @@ describe('flagText', () => {
     TestBed.configureTestingModule({});
     const i18n = TestBed.inject(I18n);
     i18n.lang.set('en');
-    expect(flagText(i18n, flag({ source: 'rule', code: 'time_format', params: { value: '25:99' } })))
-      .toBe(i18n.t('flag.time_format', { value: '25:99' }));
-    expect(flagText(i18n, flag({ source: 'rule', code: 'unknown_code', message: 'fallback' }))).toBe('fallback');
-    expect(flagText(i18n, flag({ source: 'llm', code: 'time_format', message: 'as written' }))).toBe('as written');
+    expect(
+      flagText(i18n, flag({ source: 'rule', code: 'time_format', params: { value: '25:99' } })),
+    ).toBe(i18n.t('flag.time_format', { value: '25:99' }));
+    expect(
+      flagText(i18n, flag({ source: 'rule', code: 'unknown_code', message: 'fallback' })),
+    ).toBe('fallback');
+    expect(
+      flagText(i18n, flag({ source: 'llm', code: 'time_format', message: 'as written' })),
+    ).toBe('as written');
   });
 });

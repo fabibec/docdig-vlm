@@ -1,11 +1,10 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-
-import { I18n, TPipe } from './i18n';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { de } from './de';
 import { en } from './en';
 import { fr } from './fr';
+import { I18n, TPipe } from './i18n';
 
 @Component({
   selector: 'app-t-host',

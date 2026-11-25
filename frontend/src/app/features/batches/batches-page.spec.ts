@@ -1,19 +1,18 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { provideRouter } from '@angular/router';
-import { By } from '@angular/platform-browser';
 import { signal } from '@angular/core';
+import { type ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
+import { provideRouter } from '@angular/router';
 import { Subject } from 'rxjs';
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-
-import { BatchesPage } from './batches-page';
-import { BatchCard } from './batch-card';
-import { UploadDialog } from './upload-dialog';
-import { BatchOut, Paginated, Progress, ServerEvent } from '../../core/api/api.types';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ZardAlertDialogService } from '@/shared/components/alert-dialog';
+import type { BatchOut, Paginated, Progress, ServerEvent } from '../../core/api/api.types';
 import { I18n } from '../../core/i18n/i18n';
 import { Realtime } from '../../core/realtime/realtime.service';
-import { ZardAlertDialogService } from '@/shared/components/alert-dialog';
+import { BatchCard } from './batch-card';
+import { BatchesPage } from './batches-page';
+import { UploadDialog } from './upload-dialog';
 
 class MockRealtime {
   readonly events$ = new Subject<ServerEvent>();
@@ -26,8 +25,12 @@ const PAGE1 = '/api/batches?page=1&size=10';
 
 function batch(slug: string, name = slug): BatchOut {
   return {
-    slug, name, created_at: '2026-11-05T12:00:00Z', num_docs: 1,
-    counts: { queued: 0, processing: 0, review: 0, done: 1, error: 0 }, open_flags: 0,
+    slug,
+    name,
+    created_at: '2026-11-05T12:00:00Z',
+    num_docs: 1,
+    counts: { queued: 0, processing: 0, review: 0, done: 1, error: 0 },
+    open_flags: 0,
   };
 }
 
@@ -112,7 +115,9 @@ describe('BatchesPage', () => {
     await render();
     expect(el().textContent).toContain(t('common.error'));
 
-    [...el().querySelectorAll('button')].find((b) => b.textContent?.trim() === t('common.retry'))!.click();
+    [...el().querySelectorAll('button')]
+      .find((b) => b.textContent?.trim() === t('common.retry'))!
+      .click();
     fixture.detectChanges();
     httpMock.expectOne(PAGE1).flush(page([batch('a', 'Batch A')]));
     await render();
@@ -120,8 +125,15 @@ describe('BatchesPage', () => {
   });
 
   it('pages through the batches 10 at a time', async () => {
-    await load(page(Array.from({ length: 10 }, (_, i) => batch(`b${i}`)), 15));
-    el().querySelector<HTMLButtonElement>(`button[aria-label="${t('pager.next')}"]`)!.click();
+    await load(
+      page(
+        Array.from({ length: 10 }, (_, i) => batch(`b${i}`)),
+        15,
+      ),
+    );
+    el()
+      .querySelector<HTMLButtonElement>(`button[aria-label="${t('pager.next')}"]`)!
+      .click();
     fixture.detectChanges();
     httpMock.expectOne('/api/batches?page=2&size=10').flush(page([batch('b10')], 15, 2));
     await render();
@@ -146,7 +158,9 @@ describe('BatchesPage', () => {
         return {} as ReturnType<ZardAlertDialogService['confirm']>;
       });
 
-      el().querySelector<HTMLButtonElement>(`button[aria-label="${t('batches.delete')}"]`)!.click();
+      el()
+        .querySelector<HTMLButtonElement>(`button[aria-label="${t('batches.delete')}"]`)!
+        .click();
       httpMock.expectOne({ method: 'DELETE', url: '/api/batches/a' }).flush(null);
       fixture.detectChanges();
       httpMock.expectOne(PAGE1).flush(page([]));
@@ -180,7 +194,20 @@ describe('BatchesPage', () => {
       await load(page([]));
       emitAndDebounce(
         { type: 'review.pending', files_left: 1, flags_left: 2 },
-        { type: 'doc.status', doc: { slug: 'd', batch_slug: 'a', filename: 'd.pdf', status: 'done', num_pages: 1, open_flags: 0, error: null, updated_at: '' }, progress: null },
+        {
+          type: 'doc.status',
+          doc: {
+            slug: 'd',
+            batch_slug: 'a',
+            filename: 'd.pdf',
+            status: 'done',
+            num_pages: 1,
+            open_flags: 0,
+            error: null,
+            updated_at: '',
+          },
+          progress: null,
+        },
       );
       httpMock.expectNone(PAGE1);
     });
@@ -188,7 +215,9 @@ describe('BatchesPage', () => {
 
   describe('upload dialog', () => {
     async function openDialog() {
-      [...el().querySelectorAll('button')].find((b) => b.textContent?.trim() === t('batches.new'))!.click();
+      [...el().querySelectorAll('button')]
+        .find((b) => b.textContent?.trim() === t('batches.new'))!
+        .click();
       await render();
       return fixture.debugElement.query(By.directive(UploadDialog));
     }
@@ -204,8 +233,15 @@ describe('BatchesPage', () => {
     });
 
     it('jumps back to page 1 and reloads after a batch was created', async () => {
-      await load(page(Array.from({ length: 10 }, (_, i) => batch(`b${i}`)), 15));
-      el().querySelector<HTMLButtonElement>(`button[aria-label="${t('pager.next')}"]`)!.click();
+      await load(
+        page(
+          Array.from({ length: 10 }, (_, i) => batch(`b${i}`)),
+          15,
+        ),
+      );
+      el()
+        .querySelector<HTMLButtonElement>(`button[aria-label="${t('pager.next')}"]`)!
+        .click();
       fixture.detectChanges();
       httpMock.expectOne('/api/batches?page=2&size=10').flush(page([batch('b10')], 15, 2));
       await render();

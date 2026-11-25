@@ -1,24 +1,47 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-
-import { PageDraft, SplitReview } from './split-review';
-import { ColumnKey, COLUMNS, FlagOut, PageRows } from '../../core/api/api.types';
+import { type ComponentFixture, TestBed } from '@angular/core/testing';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { COLUMNS, type ColumnKey, type FlagOut, type PageRows } from '../../core/api/api.types';
 import { I18n } from '../../core/i18n/i18n';
+import { type PageDraft, SplitReview } from './split-review';
 
 function flag(over: Partial<FlagOut>): FlagOut {
   return {
-    id: 1, page: 1, row: 1, column: 'species', source: 'llm', severity: 'warning', code: null, params: {},
-    message: 'unclear', suggestion: null, confidence: null, resolved: false, ...over,
+    id: 1,
+    page: 1,
+    row: 1,
+    column: 'species',
+    source: 'llm',
+    severity: 'warning',
+    code: null,
+    params: {},
+    message: 'unclear',
+    suggestion: null,
+    confidence: null,
+    resolved: false,
+    ...over,
   };
 }
 
 function rows(num: number, corrected: ColumnKey[] = []): PageRows {
   const empty = Object.fromEntries(COLUMNS.map((c) => [c, ''])) as Record<ColumnKey, string>;
-  const column_x = Object.fromEntries(COLUMNS.map((c, i) => [c, [i * 10, i * 10 + 10]])) as Record<ColumnKey, [number, number]>;
+  const column_x = Object.fromEntries(COLUMNS.map((c, i) => [c, [i * 10, i * 10 + 10]])) as Record<
+    ColumnKey,
+    [number, number]
+  >;
   return {
-    num, width: 90, height: 30, columns: COLUMNS, column_x,
+    num,
+    width: 90,
+    height: 30,
+    columns: COLUMNS,
+    column_x,
     rows: [
-      { idx: 1, y0: 0, y1: 10, values: { ...empty, species: 'Amsl', weight_g: '80' }, corrected: [] },
+      {
+        idx: 1,
+        y0: 0,
+        y1: 10,
+        values: { ...empty, species: 'Amsl', weight_g: '80' },
+        corrected: [],
+      },
       { idx: 2, y0: 10, y1: 20, values: { ...empty, species: 'Kohlmeise', sex: 'M' }, corrected },
       { idx: 3, y0: 20, y1: 30, values: { ...empty, species: 'Blaumeise' }, corrected: [] },
     ],
@@ -32,13 +55,29 @@ describe('SplitReview', () => {
   let saved: ReturnType<typeof vi.fn<(d: PageDraft) => void>>;
 
   const el = () => fixture.nativeElement as HTMLElement;
-  const cell = (row: number, col: ColumnKey) => el().querySelector<HTMLInputElement>(`#split-cell-${row}-${col}`)!;
+  const cell = (row: number, col: ColumnKey) =>
+    el().querySelector<HTMLInputElement>(`#split-cell-${row}-${col}`)!;
   const td = (row: number, col: ColumnKey) => cell(row, col).closest('td')!;
-  const buttonByText = (text: string) => [...el().querySelectorAll('button')].find((b) => b.textContent?.trim() === text);
+  const buttonByText = (text: string) =>
+    [...el().querySelectorAll('button')].find((b) => b.textContent?.trim() === text);
   const saveButton = () => buttonByText(t('review.save'))!;
 
-  const species = flag({ id: 10, row: 1, column: 'species', suggestion: 'Amsel', confidence: 0.4, params: { value: 'Amsl' } });
-  const weight = flag({ id: 11, row: 1, column: 'weight_g', source: 'rule', code: 'weight_out_of_range', params: { value: '80', min: 5, max: 40 } });
+  const species = flag({
+    id: 10,
+    row: 1,
+    column: 'species',
+    suggestion: 'Amsel',
+    confidence: 0.4,
+    params: { value: 'Amsl' },
+  });
+  const weight = flag({
+    id: 11,
+    row: 1,
+    column: 'weight_g',
+    source: 'rule',
+    code: 'weight_out_of_range',
+    params: { value: '80', min: 5, max: 40 },
+  });
   const done = flag({ id: 12, row: 3, column: 'species', resolved: true });
   const otherPage = flag({ id: 13, page: 2, row: 1, column: 'sex' });
 
@@ -56,7 +95,10 @@ describe('SplitReview', () => {
     fixture = TestBed.createComponent(SplitReview);
     split = fixture.componentInstance;
     fixture.componentRef.setInput('slug', 'd1');
-    fixture.componentRef.setInput('pages', [{ num: 1, open_flags: 2, page_confidence: null }, { num: 2, open_flags: 1, page_confidence: null }]);
+    fixture.componentRef.setInput('pages', [
+      { num: 1, open_flags: 2, page_confidence: null },
+      { num: 2, open_flags: 1, page_confidence: null },
+    ]);
     fixture.componentRef.setInput('rows', rows(1, ['sex']));
     fixture.componentRef.setInput('flags', [species, weight, done, otherPage]);
     fixture.componentRef.setInput('page', 1);
@@ -66,7 +108,9 @@ describe('SplitReview', () => {
   });
 
   it('shows the cropped image of the current page and an editable table', () => {
-    expect(el().querySelector('img')!.getAttribute('src')).toBe('/api/docs/d1/artifacts/cropped/page/1');
+    expect(el().querySelector('img')!.getAttribute('src')).toBe(
+      '/api/docs/d1/artifacts/cropped/page/1',
+    );
     expect(cell(1, 'species').value).toBe('Amsl');
     expect(cell(2, 'species').value).toBe('Kohlmeise');
   });
@@ -86,8 +130,9 @@ describe('SplitReview', () => {
     expect(tip.textContent).toContain('unclear');
     expect(tip.textContent).toContain(t('review.read', { value: 'Amsl' }));
     expect(tip.textContent).toContain(t('review.confidence', { pct: 40 }));
-    expect(td(1, 'weight_g').querySelector('.absolute')!.textContent)
-      .toContain(t('flag.weight_out_of_range', { value: '80', min: 5, max: 40 }));
+    expect(td(1, 'weight_g').querySelector('.absolute')!.textContent).toContain(
+      t('flag.weight_out_of_range', { value: '80', min: 5, max: 40 }),
+    );
   });
 
   describe('Save & next', () => {
@@ -119,13 +164,17 @@ describe('SplitReview', () => {
 
     it('saves directly once every flag is resolved by editing, resolve button or suggestion', () => {
       // suggestion
-      [...td(1, 'species').querySelectorAll('button')].find((b) => b.textContent?.includes('„Amsel“'))!.click();
+      [...td(1, 'species').querySelectorAll('button')]
+        .find((b) => b.textContent?.includes('„Amsel“'))!
+        .click();
       fixture.detectChanges();
       expect(cell(1, 'species').value).toBe('Amsel');
       expect(td(1, 'species').className).toContain('bg-emerald-100');
 
       // resolve button
-      td(1, 'weight_g').querySelector<HTMLButtonElement>(`button[aria-label="${t('review.resolveCell')}"]`)!.click();
+      td(1, 'weight_g')
+        .querySelector<HTMLButtonElement>(`button[aria-label="${t('review.resolveCell')}"]`)!
+        .click();
       fixture.detectChanges();
       expect(td(1, 'weight_g').className).toContain('bg-emerald-100');
 
@@ -143,7 +192,10 @@ describe('SplitReview', () => {
       expect(td(3, 'ring_no').className).toContain('bg-sky-100');
 
       saveButton().click();
-      expect(saved).toHaveBeenCalledWith({ 1: { species: 'Amsel', weight_g: '8.0' }, 3: { ring_no: 'AB123' } });
+      expect(saved).toHaveBeenCalledWith({
+        1: { species: 'Amsel', weight_g: '8.0' },
+        3: { ring_no: 'AB123' },
+      });
     });
 
     it('Enter on a flagged cell marks it resolved', () => {
@@ -155,7 +207,9 @@ describe('SplitReview', () => {
     });
 
     it('a whole-row flag is resolved by resolving any cell of the row', () => {
-      fixture.componentRef.setInput('flags', [flag({ id: 20, row: 2, column: null, source: 'user', message: 'check row' })]);
+      fixture.componentRef.setInput('flags', [
+        flag({ id: 20, row: 2, column: null, source: 'user', message: 'check row' }),
+      ]);
       fixture.detectChanges();
       saveButton().click();
       fixture.detectChanges();
@@ -212,7 +266,9 @@ describe('SplitReview', () => {
   it('the column-view button closes the split view', () => {
     const close = vi.fn();
     split.closeSplit.subscribe(close);
-    el().querySelector<HTMLButtonElement>(`button[aria-label="${t('review.columnView')}"]`)!.click();
+    el()
+      .querySelector<HTMLButtonElement>(`button[aria-label="${t('review.columnView')}"]`)!
+      .click();
     expect(close).toHaveBeenCalledOnce();
   });
 

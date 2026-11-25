@@ -1,9 +1,11 @@
-import { describe, it, expect } from 'vitest';
-
+import { describe, expect, it } from 'vitest';
+import { COLUMNS, type ColumnKey, type RowOut } from '../../core/api/api.types';
 import { toMarkdown } from './markdown';
-import { ColumnKey, COLUMNS, RowOut } from '../../core/api/api.types';
 
-const labels = Object.fromEntries(COLUMNS.map((c) => [c, c.toUpperCase()])) as Record<ColumnKey, string>;
+const labels = Object.fromEntries(COLUMNS.map((c) => [c, c.toUpperCase()])) as Record<
+  ColumnKey,
+  string
+>;
 
 function row(idx: number, values: Partial<Record<ColumnKey, string>>): RowOut {
   const all = Object.fromEntries(COLUMNS.map((c) => [c, ''])) as Record<ColumnKey, string>;
@@ -12,7 +14,10 @@ function row(idx: number, values: Partial<Record<ColumnKey, string>>): RowOut {
 
 describe('toMarkdown', () => {
   it('renders a header, a separator and one line per row with aligned columns', () => {
-    const md = toMarkdown([row(1, { species: 'Amsel', sex: 'M' }), row(12, { species: 'Kohlmeise' })], labels);
+    const md = toMarkdown(
+      [row(1, { species: 'Amsel', sex: 'M' }), row(12, { species: 'Kohlmeise' })],
+      labels,
+    );
     const lines = md.split('\n');
     expect(lines.length).toBe(4);
     expect(lines[0].startsWith('| #  | RING_NO | SPECIES   |')).toBe(true);
@@ -25,7 +30,10 @@ describe('toMarkdown', () => {
 
   it('uses the given (translated) labels in column order', () => {
     const header = toMarkdown([], labels).split('\n')[0];
-    const cells = header.split('|').map((c) => c.trim()).filter(Boolean);
+    const cells = header
+      .split('|')
+      .map((c) => c.trim())
+      .filter(Boolean);
     expect(cells).toEqual(['#', ...COLUMNS.map((c) => c.toUpperCase())]);
   });
 

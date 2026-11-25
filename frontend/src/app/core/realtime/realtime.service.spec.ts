@@ -1,8 +1,7 @@
 import { TestBed } from '@angular/core/testing';
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { DocOut, ServerEvent } from '../api/api.types';
 import { Realtime } from './realtime.service';
-import { DocOut, ServerEvent } from '../api/api.types';
 
 /** Minimal WebSocket stand-in; tests drive the lifecycle by hand. */
 class FakeWebSocket {
@@ -36,7 +35,16 @@ class FakeWebSocket {
 const last = () => FakeWebSocket.instances.at(-1)!;
 
 function doc(slug: string, status: DocOut['status']): DocOut {
-  return { slug, batch_slug: 'b', filename: `${slug}.pdf`, status, num_pages: 3, open_flags: 0, error: null, updated_at: '' };
+  return {
+    slug,
+    batch_slug: 'b',
+    filename: `${slug}.pdf`,
+    status,
+    num_pages: 3,
+    open_flags: 0,
+    error: null,
+    updated_at: '',
+  };
 }
 
 describe('Realtime', () => {
@@ -73,9 +81,17 @@ describe('Realtime', () => {
   it('parses messages into events$', () => {
     const seen: ServerEvent[] = [];
     rt.events$.subscribe((e) => seen.push(e));
-    const ev: ServerEvent = { type: 'batch.created', batch: {
-      slug: 'b', name: 'B', created_at: '', num_docs: 0, counts: { queued: 0, processing: 0, review: 0, done: 0, error: 0 }, open_flags: 0,
-    } };
+    const ev: ServerEvent = {
+      type: 'batch.created',
+      batch: {
+        slug: 'b',
+        name: 'B',
+        created_at: '',
+        num_docs: 0,
+        counts: { queued: 0, processing: 0, review: 0, done: 0, error: 0 },
+        open_flags: 0,
+      },
+    };
     last().send(ev);
     last().send({ type: 'review.pending', files_left: 1, flags_left: 2 });
     expect(seen).toEqual([ev, { type: 'review.pending', files_left: 1, flags_left: 2 }]);
@@ -87,14 +103,26 @@ describe('Realtime', () => {
   });
 
   it('keeps progress per doc while processing and clears it afterwards', () => {
-    last().send({ type: 'doc.status', doc: doc('a', 'processing'), progress: { step: 'raw', page: 1, pages: 3 } });
-    last().send({ type: 'doc.status', doc: doc('b', 'processing'), progress: { step: 'cropped', page: 2, pages: 3 } });
+    last().send({
+      type: 'doc.status',
+      doc: doc('a', 'processing'),
+      progress: { step: 'raw', page: 1, pages: 3 },
+    });
+    last().send({
+      type: 'doc.status',
+      doc: doc('b', 'processing'),
+      progress: { step: 'cropped', page: 2, pages: 3 },
+    });
     expect(rt.progress()).toEqual({
       a: { step: 'raw', page: 1, pages: 3 },
       b: { step: 'cropped', page: 2, pages: 3 },
     });
 
-    last().send({ type: 'doc.status', doc: doc('a', 'processing'), progress: { step: 'processed', page: 3, pages: 3 } });
+    last().send({
+      type: 'doc.status',
+      doc: doc('a', 'processing'),
+      progress: { step: 'processed', page: 3, pages: 3 },
+    });
     expect(rt.progress()['a']).toEqual({ step: 'processed', page: 3, pages: 3 });
 
     // processing without progress keeps the last known value

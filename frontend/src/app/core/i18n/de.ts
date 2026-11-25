@@ -86,7 +86,8 @@ export const de = {
   'review.doneText': 'Alle Datensätze in dieser Auswahl sind geprüft.',
   'review.backHome': 'Zur Übersicht',
   'review.saveFailed': 'Speichern fehlgeschlagen.',
-  'review.noFlags': 'Keine offenen Markierungen in dieser Zeile. Du kannst Werte korrigieren oder eine Anmerkung hinzufügen.',
+  'review.noFlags':
+    'Keine offenen Markierungen in dieser Zeile. Du kannst Werte korrigieren oder eine Anmerkung hinzufügen.',
   'review.clickHint': 'Klicke im Viewer auf eine Zeile, um sie zu korrigieren oder anzumerken.',
   'review.addNote': 'Anmerkung hinzufügen',
   'review.notePlaceholder': 'Was soll hier geprüft werden?',
@@ -100,7 +101,8 @@ export const de = {
   'review.splitView': 'Split-Ansicht öffnen',
   'review.columnView': 'Spaltenansicht öffnen',
   'review.resolveCell': 'Als geprüft markieren',
-  'review.unresolvedWarn': 'Auf dieser Seite sind noch {n} unbestätigte Markierung(en) offen. Trotzdem speichern und alle als erledigt markieren?',
+  'review.unresolvedWarn':
+    'Auf dieser Seite sind noch {n} unbestätigte Markierung(en) offen. Trotzdem speichern und alle als erledigt markieren?',
   'review.saveAnyway': 'Trotzdem speichern',
   'source.llm': 'KI',
   'source.rule': 'Regel',

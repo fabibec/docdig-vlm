@@ -1,9 +1,8 @@
 import { TestBed } from '@angular/core/testing';
-import { describe, it, expect, beforeEach } from 'vitest';
-
-import { StatusBadge } from './status-badge';
-import { DocStatus } from '../../core/api/api.types';
+import { beforeEach, describe, expect, it } from 'vitest';
+import type { DocStatus } from '../../core/api/api.types';
 import { I18n } from '../../core/i18n/i18n';
+import { StatusBadge } from './status-badge';
 
 describe('StatusBadge', () => {
   let i18n: I18n;
@@ -36,7 +35,8 @@ describe('StatusBadge', () => {
   });
 
   it('uses a different colour per status', () => {
-    const cls = (s: DocStatus) => (render(s).nativeElement as HTMLElement).querySelector('span')!.className;
+    const cls = (s: DocStatus) =>
+      (render(s).nativeElement as HTMLElement).querySelector('span')!.className;
     expect(cls('done')).toContain('bg-green-100');
     expect(cls('review')).toContain('bg-red-100');
     expect(cls('processing')).toContain('bg-amber-100');

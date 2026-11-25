@@ -1,8 +1,7 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
-
-import { Paginator } from './paginator';
+import { type ComponentFixture, TestBed } from '@angular/core/testing';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { I18n } from '../../core/i18n/i18n';
+import { Paginator } from './paginator';
 
 describe('Paginator', () => {
   let fixture: ComponentFixture<Paginator>;
@@ -10,8 +9,10 @@ describe('Paginator', () => {
   let emitted: Mock<(page: number) => void>;
 
   const el = () => fixture.nativeElement as HTMLElement;
-  const prev = () => el().querySelector<HTMLButtonElement>(`button[aria-label="${t('pager.prev')}"]`)!;
-  const next = () => el().querySelector<HTMLButtonElement>(`button[aria-label="${t('pager.next')}"]`)!;
+  const prev = () =>
+    el().querySelector<HTMLButtonElement>(`button[aria-label="${t('pager.prev')}"]`)!;
+  const next = () =>
+    el().querySelector<HTMLButtonElement>(`button[aria-label="${t('pager.next')}"]`)!;
 
   function set(page: number, size: number, total: number) {
     fixture.componentRef.setInput('page', page);

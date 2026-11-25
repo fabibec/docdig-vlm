@@ -1,18 +1,16 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideHttpClient } from '@angular/common/http';
+import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { provideRouter } from '@angular/router';
 import { signal } from '@angular/core';
-import { HttpErrorResponse } from '@angular/common/http';
-import { Subject, of, throwError } from 'rxjs';
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-
-import { BatchCard } from './batch-card';
+import { type ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
+import { of, Subject, throwError } from 'rxjs';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ZardAlertDialogService } from '@/shared/components/alert-dialog';
 import { Api } from '../../core/api/api.service';
-import { BatchOut, DocOut, Paginated, Progress, ServerEvent } from '../../core/api/api.types';
+import type { BatchOut, DocOut, Paginated, Progress, ServerEvent } from '../../core/api/api.types';
 import { I18n } from '../../core/i18n/i18n';
 import { Realtime } from '../../core/realtime/realtime.service';
-import { ZardAlertDialogService } from '@/shared/components/alert-dialog';
+import { BatchCard } from './batch-card';
 
 class MockRealtime {
   readonly events$ = new Subject<ServerEvent>();
@@ -31,15 +29,26 @@ function mockConfirm(ok: boolean) {
 
 function doc(over: Partial<DocOut>): DocOut {
   return {
-    slug: 'doc', batch_slug: 'test-batch', filename: 'doc.pdf', status: 'done', num_pages: 1,
-    open_flags: 0, error: null, updated_at: '2026-11-05T12:00:00Z', total_cost: null, ...over,
+    slug: 'doc',
+    batch_slug: 'test-batch',
+    filename: 'doc.pdf',
+    status: 'done',
+    num_pages: 1,
+    open_flags: 0,
+    error: null,
+    updated_at: '2026-11-05T12:00:00Z',
+    total_cost: null,
+    ...over,
   };
 }
 
 const DOCS_URL = '/api/batches/test-batch/docs?page=1&size=10';
 
 function httpError(status: number, detail?: string) {
-  return throwError(() => new HttpErrorResponse({ status, statusText: 'Conflict', error: detail ? { detail } : null }));
+  return throwError(
+    () =>
+      new HttpErrorResponse({ status, statusText: 'Conflict', error: detail ? { detail } : null }),
+  );
 }
 
 describe('BatchCard', () => {
@@ -61,13 +70,50 @@ describe('BatchCard', () => {
 
   const docs: Paginated<DocOut> = {
     items: [
-      doc({ slug: 'doc-1', filename: 'scan1.pdf', status: 'done', num_pages: 5, total_cost: 0.0034 }),
-      doc({ slug: 'doc-2', filename: 'scan2.pdf', status: 'review', num_pages: 1, open_flags: 1, total_cost: 0.00005 }),
+      doc({
+        slug: 'doc-1',
+        filename: 'scan1.pdf',
+        status: 'done',
+        num_pages: 5,
+        total_cost: 0.0034,
+      }),
+      doc({
+        slug: 'doc-2',
+        filename: 'scan2.pdf',
+        status: 'review',
+        num_pages: 1,
+        open_flags: 1,
+        total_cost: 0.00005,
+      }),
       doc({ slug: 'doc-3', filename: 'zero.pdf', status: 'done', num_pages: 2, total_cost: 0 }),
-      doc({ slug: 'doc-4', filename: 'legacy_null.pdf', status: 'done', num_pages: 4, total_cost: null }),
-      doc({ slug: 'doc-5', filename: 'legacy_undefined.pdf', status: 'review', num_pages: 3, total_cost: undefined }),
-      doc({ slug: 'doc-6', filename: 'busy.pdf', status: 'processing', num_pages: null, error: null }),
-      doc({ slug: 'doc-7', filename: 'broken.pdf', status: 'error', num_pages: null, error: 'PDF corrupt' }),
+      doc({
+        slug: 'doc-4',
+        filename: 'legacy_null.pdf',
+        status: 'done',
+        num_pages: 4,
+        total_cost: null,
+      }),
+      doc({
+        slug: 'doc-5',
+        filename: 'legacy_undefined.pdf',
+        status: 'review',
+        num_pages: 3,
+        total_cost: undefined,
+      }),
+      doc({
+        slug: 'doc-6',
+        filename: 'busy.pdf',
+        status: 'processing',
+        num_pages: null,
+        error: null,
+      }),
+      doc({
+        slug: 'doc-7',
+        filename: 'broken.pdf',
+        status: 'error',
+        num_pages: null,
+        error: 'PDF corrupt',
+      }),
     ],
     total: 7,
     page: 1,
@@ -75,8 +121,10 @@ describe('BatchCard', () => {
   };
 
   const el = () => fixture.nativeElement as HTMLElement;
-  const button = (key: string) => el().querySelector<HTMLButtonElement>(`button[aria-label="${t(key)}"]`);
-  const buttons = (key: string) => el().querySelectorAll<HTMLButtonElement>(`button[aria-label="${t(key)}"]`);
+  const button = (key: string) =>
+    el().querySelector<HTMLButtonElement>(`button[aria-label="${t(key)}"]`);
+  const buttons = (key: string) =>
+    el().querySelectorAll<HTMLButtonElement>(`button[aria-label="${t(key)}"]`);
 
   async function render() {
     fixture.detectChanges();
@@ -135,13 +183,18 @@ describe('BatchCard', () => {
       const text = el().textContent!;
       expect(text).toContain(t('batches.files', { n: 2 }));
       expect(text).toContain(t('batches.flagOne', { n: 1 }));
-      const badges = [...el().querySelectorAll('app-status-badge')].map((b) => b.textContent?.replace(/\s+/g, ' ').trim());
+      const badges = [...el().querySelectorAll('app-status-badge')].map((b) =>
+        b.textContent?.replace(/\s+/g, ' ').trim(),
+      );
       expect(badges).toEqual([`${t('status.review')} · 1`, `${t('status.done')} · 1`]);
     });
 
     it('uses the singular texts for one file and one flag and hides zero counts', () => {
       fixture.componentRef.setInput('batch', {
-        ...batch, num_docs: 1, open_flags: 0, counts: { queued: 0, processing: 0, review: 0, done: 1, error: 0 },
+        ...batch,
+        num_docs: 1,
+        open_flags: 0,
+        counts: { queued: 0, processing: 0, review: 0, done: 1, error: 0 },
       });
       fixture.detectChanges();
       const text = el().textContent!;
@@ -222,7 +275,9 @@ describe('BatchCard', () => {
       const rows = [...el().querySelectorAll('li')];
       expect(rows[5].querySelector('a')).toBeNull();
       expect(rows[6].querySelector('a')).toBeNull();
-      expect(rows[6].querySelector('span[title="PDF corrupt"]')?.textContent?.trim()).toBe('broken.pdf');
+      expect(rows[6].querySelector('span[title="PDF corrupt"]')?.textContent?.trim()).toBe(
+        'broken.pdf',
+      );
     });
 
     it('shows live processing progress from Realtime', async () => {
@@ -237,15 +292,25 @@ describe('BatchCard', () => {
       await expand({ ...docs, total: 25 });
       button('pager.next')!.click();
       fixture.detectChanges();
-      httpMock.expectOne('/api/batches/test-batch/docs?page=2&size=10').flush({ ...docs, page: 2, total: 25 });
+      httpMock
+        .expectOne('/api/batches/test-batch/docs?page=2&size=10')
+        .flush({ ...docs, page: 2, total: 25 });
       await render();
     });
 
     it('reloads the expanded list on doc.status events of this batch (debounced)', async () => {
       await expand();
       vi.useFakeTimers();
-      rt.events$.next({ type: 'doc.status', doc: doc({ slug: 'doc-6', status: 'review' }), progress: null });
-      rt.events$.next({ type: 'doc.status', doc: doc({ slug: 'doc-6', status: 'done' }), progress: null });
+      rt.events$.next({
+        type: 'doc.status',
+        doc: doc({ slug: 'doc-6', status: 'review' }),
+        progress: null,
+      });
+      rt.events$.next({
+        type: 'doc.status',
+        doc: doc({ slug: 'doc-6', status: 'done' }),
+        progress: null,
+      });
       vi.advanceTimersByTime(300);
       vi.useRealTimers();
       fixture.detectChanges();
@@ -256,7 +321,11 @@ describe('BatchCard', () => {
     it('ignores doc.status events of other batches', async () => {
       await expand();
       vi.useFakeTimers();
-      rt.events$.next({ type: 'doc.status', doc: doc({ slug: 'x', batch_slug: 'other' }), progress: null });
+      rt.events$.next({
+        type: 'doc.status',
+        doc: doc({ slug: 'x', batch_slug: 'other' }),
+        progress: null,
+      });
       vi.advanceTimersByTime(1000);
       vi.useRealTimers();
       fixture.detectChanges();
@@ -307,7 +376,9 @@ describe('BatchCard', () => {
       fixture.detectChanges();
 
       expect(deleted).not.toHaveBeenCalled();
-      expect(el().querySelector('[role="alert"]')?.textContent).toContain(t('batches.deleteFailed', { msg: 'disk full' }));
+      expect(el().querySelector('[role="alert"]')?.textContent).toContain(
+        t('batches.deleteFailed', { msg: 'disk full' }),
+      );
     });
 
     it('does nothing when the confirmation is cancelled', () => {
@@ -362,7 +433,9 @@ describe('BatchCard', () => {
     });
 
     it('saves with the ✓ button', () => {
-      const spy = vi.spyOn(api, 'updateBatch').mockReturnValue(of({ ...batch, name: 'Via button' }));
+      const spy = vi
+        .spyOn(api, 'updateBatch')
+        .mockReturnValue(of({ ...batch, name: 'Via button' }));
       type(startRename(), 'Via button');
       button('batches.save')!.click();
       fixture.detectChanges();
@@ -377,7 +450,9 @@ describe('BatchCard', () => {
       fixture.detectChanges();
 
       expect(el().querySelector('form')).not.toBeNull();
-      expect(el().querySelector('[role="alert"]')?.textContent).toContain(t('batches.renameFailed', { msg: 'name taken' }));
+      expect(el().querySelector('[role="alert"]')?.textContent).toContain(
+        t('batches.renameFailed', { msg: 'name taken' }),
+      );
 
       button('batches.cancel')!.click();
       fixture.detectChanges();
@@ -461,7 +536,10 @@ describe('BatchCard', () => {
       req.flush({ ...docs.items[0], filename: 'scan1_new.pdf' });
       fixture.detectChanges();
 
-      httpMock.expectOne(DOCS_URL).flush({ ...docs, items: [{ ...docs.items[0], filename: 'scan1_new.pdf' }, ...docs.items.slice(1)] });
+      httpMock.expectOne(DOCS_URL).flush({
+        ...docs,
+        items: [{ ...docs.items[0], filename: 'scan1_new.pdf' }, ...docs.items.slice(1)],
+      });
       await render();
       expect(el().querySelector('li form')).toBeNull();
       expect(el().textContent).toContain('scan1_new.pdf');
@@ -474,7 +552,9 @@ describe('BatchCard', () => {
       fixture.detectChanges();
 
       expect(el().querySelector('li form')).not.toBeNull();
-      expect(el().querySelector('[role="alert"]')?.textContent).toContain(t('batches.renameFailed', { msg: 'still processing' }));
+      expect(el().querySelector('[role="alert"]')?.textContent).toContain(
+        t('batches.renameFailed', { msg: 'still processing' }),
+      );
     });
 
     it('does not append .pdf twice (any case)', async () => {
@@ -495,7 +575,10 @@ describe('BatchCard', () => {
       httpMock.expectOne(DOCS_URL).flush(docs);
       await render();
 
-      expect(spy.mock.calls).toEqual([['doc-1', { filename: 'renamed.pdf' }], ['doc-1', { filename: 'renamed.PDF' }]]);
+      expect(spy.mock.calls).toEqual([
+        ['doc-1', { filename: 'renamed.pdf' }],
+        ['doc-1', { filename: 'renamed.PDF' }],
+      ]);
     });
 
     it('cancels with Esc without saving', async () => {

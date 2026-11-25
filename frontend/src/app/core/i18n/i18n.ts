@@ -1,6 +1,14 @@
-import { Injectable, Pipe, PipeTransform, computed, effect, inject, signal } from '@angular/core';
+import {
+  computed,
+  effect,
+  Injectable,
+  inject,
+  Pipe,
+  type PipeTransform,
+  signal,
+} from '@angular/core';
 
-import { de, Dictionary, TranslationKey } from './de';
+import { type Dictionary, de, type TranslationKey } from './de';
 import { en } from './en';
 import { fr } from './fr';
 
@@ -34,7 +42,8 @@ export class I18n {
 
   t(key: TranslationKey | string, params?: Params): string {
     let text: string = (this.dict() as Record<string, string>)[key] ?? key;
-    if (params) for (const [k, v] of Object.entries(params)) text = text.replaceAll(`{${k}}`, String(v));
+    if (params)
+      for (const [k, v] of Object.entries(params)) text = text.replaceAll(`{${k}}`, String(v));
     return text;
   }
 

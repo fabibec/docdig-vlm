@@ -1,17 +1,33 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, input, linkedSignal, output, signal } from '@angular/core';
-import { httpResource } from '@angular/common/http';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NgTemplateOutlet } from '@angular/common';
+import { httpResource } from '@angular/common/http';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  DestroyRef,
+  inject,
+  input,
+  linkedSignal,
+  output,
+  signal,
+} from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
-  lucideCheck, lucideChevronDown, lucideChevronRight, lucideLoaderCircle, lucidePencil, lucideTrash2, lucideX,
+  lucideCheck,
+  lucideChevronDown,
+  lucideChevronRight,
+  lucideLoaderCircle,
+  lucidePencil,
+  lucideTrash2,
+  lucideX,
 } from '@ng-icons/lucide';
 import { debounceTime, filter } from 'rxjs';
 
 import { ZardAlertDialogService } from '@/shared/components/alert-dialog';
 import { Api } from '../../core/api/api.service';
-import { BatchOut, DocOut, DocStatus, Paginated } from '../../core/api/api.types';
+import type { BatchOut, DocOut, DocStatus, Paginated } from '../../core/api/api.types';
 import { httpErrorMessage } from '../../core/api/http-error';
 import { I18n, TPipe } from '../../core/i18n/i18n';
 import { Realtime } from '../../core/realtime/realtime.service';
@@ -24,9 +40,17 @@ const STATUSES: DocStatus[] = ['review', 'processing', 'queued', 'done', 'error'
 @Component({
   selector: 'app-batch-card',
   imports: [RouterLink, NgTemplateOutlet, NgIcon, TPipe, StatusBadge, Paginator],
-  providers: [provideIcons({
-    lucideChevronDown, lucideChevronRight, lucideLoaderCircle, lucideTrash2, lucidePencil, lucideCheck, lucideX,
-  })],
+  providers: [
+    provideIcons({
+      lucideChevronDown,
+      lucideChevronRight,
+      lucideLoaderCircle,
+      lucideTrash2,
+      lucidePencil,
+      lucideCheck,
+      lucideX,
+    }),
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let b = batch();
@@ -188,14 +212,21 @@ export class BatchCard {
     this.expanded() ? this.api.batchDocsUrl(this.batch().slug, this.page(), PAGE_SIZE) : undefined,
   );
   protected readonly created = computed(() =>
-    new Intl.DateTimeFormat(this.i18n.locale(), { dateStyle: 'medium', timeStyle: 'short' })
-      .format(new Date(this.batch().created_at)),
+    new Intl.DateTimeFormat(this.i18n.locale(), { dateStyle: 'medium', timeStyle: 'short' }).format(
+      new Date(this.batch().created_at),
+    ),
   );
 
   constructor() {
-    inject(Realtime).events$
-      .pipe(filter((e) => e.type === 'doc.status' && e.doc.batch_slug === this.batch().slug && this.expanded()),
-            debounceTime(300), takeUntilDestroyed(inject(DestroyRef)))
+    inject(Realtime)
+      .events$.pipe(
+        filter(
+          (e) =>
+            e.type === 'doc.status' && e.doc.batch_slug === this.batch().slug && this.expanded(),
+        ),
+        debounceTime(300),
+        takeUntilDestroyed(inject(DestroyRef)),
+      )
       .subscribe(() => this.docs.reload());
   }
 
@@ -218,7 +249,10 @@ export class BatchCard {
       zOnOk: () => {
         this.api.deleteBatch(this.batch().slug).subscribe({
           next: () => this.deleted.emit(),
-          error: (err: unknown) => this.actionError.set(this.i18n.t('batches.deleteFailed', { msg: httpErrorMessage(err) })),
+          error: (err: unknown) =>
+            this.actionError.set(
+              this.i18n.t('batches.deleteFailed', { msg: httpErrorMessage(err) }),
+            ),
         });
       },
     });
@@ -249,7 +283,8 @@ export class BatchCard {
         this.currentBatchName.set(updated.name);
         this.cancelBatchRename();
       },
-      error: (err: unknown) => this.actionError.set(this.i18n.t('batches.renameFailed', { msg: httpErrorMessage(err) })),
+      error: (err: unknown) =>
+        this.actionError.set(this.i18n.t('batches.renameFailed', { msg: httpErrorMessage(err) })),
     });
   }
 
@@ -286,7 +321,8 @@ export class BatchCard {
         this.cancelDocRename();
         this.docs.reload();
       },
-      error: (err: unknown) => this.actionError.set(this.i18n.t('batches.renameFailed', { msg: httpErrorMessage(err) })),
+      error: (err: unknown) =>
+        this.actionError.set(this.i18n.t('batches.renameFailed', { msg: httpErrorMessage(err) })),
     });
   }
 

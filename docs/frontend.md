@@ -6,20 +6,29 @@ Angular 22 SPA in `frontend/`: standalone components, zoneless, signals plus `ht
 
 ```bash
 cd frontend
-npm ci
-npm start        # ng serve on :4200; proxies /api and the WebSocket to :8000 (proxy.conf.json)
-npm run build    # -> frontend/dist/browser (what the backend serves)
-npm run lint     # ESLint (eslint.config.mjs); `npm run lint:fix` applies safe fixes
-npm test         # unit tests (@angular/build:unit-test, *.spec.ts next to the component)
+pnpm install     # pnpm >= 12; packages allowed to run install scripts are listed in pnpm-workspace.yaml
+pnpm start       # ng serve on :4200; proxies /api and the WebSocket to :8000 (proxy.conf.json)
+pnpm build       # -> frontend/dist/browser (what the backend serves)
+pnpm lint        # Biome lint + format check (biome.json); `pnpm lint:fix` applies safe fixes
+pnpm format      # Biome formatter only
+pnpm test        # unit tests (@angular/build:unit-test, *.spec.ts next to the component)
 ```
 
-Lint rules: `typescript-eslint` recommended + stylistic, `angular-eslint` TS + template + accessibility presets, plus:
-- `OnPush` is required.
-- Signal properties must be `readonly`.
-- Use `@if` / `@for` control flow and self-closing tags.
-- Use `===` everywhere.
+Formatting and linting use [Biome](https://biomejs.dev) (`biome.json`): 2 spaces, single quotes, 100 columns,
+sorted imports, the recommended rule set, plus:
+- `===` everywhere, no `console.log` (`console.warn` / `console.error` are fine).
+- No unused variables or imports (prefix with `_` to keep one on purpose).
+- Spec files may use assignments in conditions and `return` in `void` functions (the HTTP mock router does both).
 
-The vendored zard code (`shared/core`, `shared/utils`) is not linted.
+Biome has no Angular rules, so three small GritQL plugins in `lint/` cover the important ones:
+- `on-push.grit`: every `@Component` needs `ChangeDetectionStrategy.OnPush`.
+- `readonly-signals.grit`: `signal`, `computed`, `input`, `model`, `viewChild` and similar fields must be `readonly`.
+- `control-flow.grit`: inline templates use `@if` / `@for` / `@switch`, not `*ngIf` / `*ngFor` / `*ngSwitch`.
+
+Biome does not look inside inline templates. Template a11y, self-closing tags and `===` in templates are
+not checked by a linter; `pnpm build` still type-checks templates.
+
+The vendored zard code (`shared/core`, `shared/utils`, `shared/components`) is not linted.
 
 Start the backend alongside with `uv run granian --interface asgi --reload backend.api.app:app` (see [backend.md](backend.md)).
 

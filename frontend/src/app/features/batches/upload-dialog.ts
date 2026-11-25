@@ -1,14 +1,27 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, output, signal } from '@angular/core';
-import { HttpErrorResponse, HttpEventType } from '@angular/common/http';
+import { type HttpErrorResponse, HttpEventType } from '@angular/common/http';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  DestroyRef,
+  inject,
+  output,
+  signal,
+} from '@angular/core';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
-  lucideCheck, lucideExternalLink, lucideFolderOpen, lucidePencil, lucideUpload, lucideX,
+  lucideCheck,
+  lucideExternalLink,
+  lucideFolderOpen,
+  lucidePencil,
+  lucideUpload,
+  lucideX,
 } from '@ng-icons/lucide';
 
 import { ZardButtonComponent } from '@/shared/components/button';
 import { ZardDialogImports } from '@/shared/components/dialog';
 import { Api } from '../../core/api/api.service';
-import { DuplicateFiles } from '../../core/api/api.types';
+import type { DuplicateFiles } from '../../core/api/api.types';
 import { httpErrorMessage } from '../../core/api/http-error';
 import { I18n, TPipe } from '../../core/i18n/i18n';
 import { FileSizePipe } from '../../shared/ui/file-size.pipe';
@@ -19,9 +32,16 @@ const PREVIEW_PAGE = 10;
 @Component({
   selector: 'app-upload-dialog',
   imports: [TPipe, NgIcon, FileSizePipe, Paginator, ...ZardDialogImports, ZardButtonComponent],
-  providers: [provideIcons({
-    lucideCheck, lucideExternalLink, lucideFolderOpen, lucidePencil, lucideUpload, lucideX,
-  })],
+  providers: [
+    provideIcons({
+      lucideCheck,
+      lucideExternalLink,
+      lucideFolderOpen,
+      lucidePencil,
+      lucideUpload,
+      lucideX,
+    }),
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <z-dialog [zVisible]="true" (zVisibleChange)="!$event && cancel()" zWidth="32rem"
@@ -125,14 +145,18 @@ export class UploadDialog {
   created = output<void>();
 
   protected pageSize = PREVIEW_PAGE;
-  protected readonly name = signal(this.i18n.t('upload.defaultName', { date: new Date().toLocaleDateString(this.i18n.locale()) }));
+  protected readonly name = signal(
+    this.i18n.t('upload.defaultName', { date: new Date().toLocaleDateString(this.i18n.locale()) }),
+  );
   readonly files = signal<File[]>([]);
   protected readonly page = signal(1);
   protected readonly over = signal(false);
   protected readonly skippedDupes = signal<string[]>([]);
   protected readonly progress = signal<number | null>(null);
   protected readonly error = signal('');
-  protected readonly visible = computed(() => this.files().slice((this.page() - 1) * PREVIEW_PAGE, this.page() * PREVIEW_PAGE));
+  protected readonly visible = computed(() =>
+    this.files().slice((this.page() - 1) * PREVIEW_PAGE, this.page() * PREVIEW_PAGE),
+  );
 
   readonly editingFile = signal<File | null>(null);
   readonly editName = signal('');
@@ -196,7 +220,10 @@ export class UploadDialog {
       return;
     }
     this.releasePreview(oldFile);
-    const renamed = new File([oldFile], newName, { type: oldFile.type, lastModified: oldFile.lastModified });
+    const renamed = new File([oldFile], newName, {
+      type: oldFile.type,
+      lastModified: oldFile.lastModified,
+    });
     this.files.update((cur) => cur.map((f) => (f === oldFile ? renamed : f)));
     this.cancelRename();
   }
@@ -204,14 +231,20 @@ export class UploadDialog {
   protected add(list: FileList | null | undefined): void {
     if (!list) return;
     const known = new Set(this.files().map((f) => f.name));
-    const dupes: string[] = [], ok: File[] = [];
+    const dupes: string[] = [],
+      ok: File[] = [];
     for (const f of Array.from(list)) {
       if (!/\.pdf$/i.test(f.name)) continue;
       if (known.has(f.name)) dupes.push(f.name);
-      else { known.add(f.name); ok.push(f); }
+      else {
+        known.add(f.name);
+        ok.push(f);
+      }
     }
     this.skippedDupes.set(dupes);
-    this.files.update((cur) => [...cur, ...ok].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })));
+    this.files.update((cur) =>
+      [...cur, ...ok].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })),
+    );
   }
 
   protected remove(file: File): void {
@@ -233,14 +266,17 @@ export class UploadDialog {
     this.progress.set(0);
     this.api.createBatch(this.name().trim() || 'Batch', this.files()).subscribe({
       next: (ev) => {
-        if (ev.type === HttpEventType.UploadProgress && ev.total) this.progress.set(Math.round((100 * ev.loaded) / ev.total));
+        if (ev.type === HttpEventType.UploadProgress && ev.total)
+          this.progress.set(Math.round((100 * ev.loaded) / ev.total));
         if (ev.type === HttpEventType.Response) this.created.emit();
       },
       error: (err: HttpErrorResponse) => {
         this.progress.set(null);
         const body = err.error as DuplicateFiles | null;
         if (err.status === 409 && body && 'filenames' in body) {
-          this.error.set(this.i18n.t('upload.serverDuplicates', { names: body.filenames.join(', ') }));
+          this.error.set(
+            this.i18n.t('upload.serverDuplicates', { names: body.filenames.join(', ') }),
+          );
         } else {
           this.error.set(this.i18n.t('upload.failed', { msg: httpErrorMessage(err) }));
         }

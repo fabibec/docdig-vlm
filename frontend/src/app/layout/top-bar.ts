@@ -1,9 +1,9 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 
-import { I18n, LANGS, Lang, TPipe } from '../core/i18n/i18n';
+import { I18n, LANGS, type Lang, TPipe } from '../core/i18n/i18n';
 import { Realtime } from '../core/realtime/realtime.service';
-import { THEME_MODES, Theme, ThemeMode } from '../core/theme/theme.service';
+import { THEME_MODES, Theme, type ThemeMode } from '../core/theme/theme.service';
 import { Logo } from './logo';
 
 @Component({

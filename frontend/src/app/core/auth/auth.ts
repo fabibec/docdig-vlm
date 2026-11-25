@@ -1,5 +1,5 @@
-import { HttpInterceptorFn } from '@angular/common/http';
-import { CanActivateFn } from '@angular/router';
+import type { HttpInterceptorFn } from '@angular/common/http';
+import type { CanActivateFn } from '@angular/router';
 
 /*
  * Placeholders for the later Nextcloud login (see docs/backend.md "Later: auth + Nextcloud").

@@ -1,16 +1,29 @@
 import {
-  ChangeDetectionStrategy, Component, ElementRef, computed, effect, inject, input, model, output, signal, viewChild,
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  type ElementRef,
+  effect,
+  inject,
+  input,
+  model,
+  output,
+  signal,
+  viewChild,
 } from '@angular/core';
 import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideCopy, lucideCheck, lucideSquareSplitHorizontal } from '@ng-icons/lucide';
+import { lucideCheck, lucideCopy, lucideSquareSplitHorizontal } from '@ng-icons/lucide';
 
 import { Api } from '../../core/api/api.service';
-import { ColumnKey, COLUMNS, PageInfo, PageRows } from '../../core/api/api.types';
+import { COLUMNS, type ColumnKey, type PageInfo, type PageRows } from '../../core/api/api.types';
 import { I18n, TPipe } from '../../core/i18n/i18n';
 import { toMarkdown } from './markdown';
 
 export type ViewerStep = 'raw' | 'cropped' | 'processed';
-export interface CellRef { row: number; column: ColumnKey | null }
+export interface CellRef {
+  row: number;
+  column: ColumnKey | null;
+}
 
 /**
  * The 3-step view (original page / detected table / extracted result) for one document.
@@ -161,13 +174,18 @@ export class PipelineViewer {
   protected columns = COLUMNS;
   protected readonly mode = signal<'rendered' | 'markdown'>('rendered');
   protected readonly copied = signal(false);
-  protected readonly fillCls = computed(() => (this.fill() ? 'xl:max-h-none xl:min-h-0 xl:flex-1' : ''));
+  protected readonly fillCls = computed(() =>
+    this.fill() ? 'xl:max-h-none xl:min-h-0 xl:flex-1' : '',
+  );
   private readonly frame = viewChild<ElementRef<HTMLElement>>('frame');
 
   protected readonly markdown = computed(() => {
     const r = this.rows();
     if (!r) return '';
-    const labels = Object.fromEntries(COLUMNS.map((c) => [c, this.i18n.t(`col.${c}`)])) as Record<ColumnKey, string>;
+    const labels = Object.fromEntries(COLUMNS.map((c) => [c, this.i18n.t(`col.${c}`)])) as Record<
+      ColumnKey,
+      string
+    >;
     return toMarkdown(r.rows, labels);
   });
 
@@ -176,10 +194,12 @@ export class PipelineViewer {
   }
 
   protected readonly selectedRect = computed(() => {
-    const r = this.rows(), sel = this.selectedRow();
+    const r = this.rows(),
+      sel = this.selectedRow();
     const row = sel === null ? undefined : this.rowBox(sel);
     if (!r || !row) return null;
-    const x0 = r.column_x.ring_no[0], x1 = r.column_x.additional_remark[1];
+    const x0 = r.column_x.ring_no[0],
+      x1 = r.column_x.additional_remark[1];
     return { x: x0, y: row.y0, w: x1 - x0, h: row.y1 - row.y0 };
   });
 
@@ -197,14 +217,18 @@ export class PipelineViewer {
   constructor() {
     // Keep the highlighted row in view inside the (scrollable) table frame.
     effect(() => {
-      const rect = this.selectedRect(), frame = this.frame()?.nativeElement, r = this.rows();
+      const rect = this.selectedRect(),
+        frame = this.frame()?.nativeElement,
+        r = this.rows();
       if (!rect || !frame || !r) return;
       const img = frame.querySelector('img');
       const scroll = () => {
         const scale = (img?.clientHeight ?? 0) / r.height;
-        if (scale) frame.scrollTo({ top: rect.y * scale - frame.clientHeight / 3, behavior: 'smooth' });
+        if (scale)
+          frame.scrollTo({ top: rect.y * scale - frame.clientHeight / 3, behavior: 'smooth' });
       };
-      if (img?.complete) scroll(); else img?.addEventListener('load', scroll, { once: true });
+      if (img?.complete) scroll();
+      else img?.addEventListener('load', scroll, { once: true });
     });
   }
 
@@ -218,9 +242,11 @@ export class PipelineViewer {
 
   /** Step 2: map the click position on the cropped image to (row, column) via the page geometry. */
   protected imageClick(ev: MouseEvent): void {
-    const r = this.rows(), el = ev.currentTarget as HTMLElement;
+    const r = this.rows(),
+      el = ev.currentTarget as HTMLElement;
     if (!this.interactive() || !r || !el.clientWidth) return;
-    const x = (ev.offsetX / el.clientWidth) * r.width, y = (ev.offsetY / el.clientHeight) * r.height;
+    const x = (ev.offsetX / el.clientWidth) * r.width,
+      y = (ev.offsetY / el.clientHeight) * r.height;
     const row = r.rows.find((x0) => y >= x0.y0 && y < x0.y1);
     if (!row) return;
     const column = COLUMNS.find((c) => x >= r.column_x[c][0] && x < r.column_x[c][1]) ?? null;

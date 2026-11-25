@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { Theme } from './theme.service';
 
@@ -7,9 +7,15 @@ import { Theme } from './theme.service';
 class FakeMediaQuery {
   private listeners = new Set<(e: MediaQueryListEvent) => void>();
   constructor(public matches: boolean) {}
-  addEventListener(_: 'change', l: (e: MediaQueryListEvent) => void) { this.listeners.add(l); }
-  removeEventListener(_: 'change', l: (e: MediaQueryListEvent) => void) { this.listeners.delete(l); }
-  get listenerCount() { return this.listeners.size; }
+  addEventListener(_: 'change', l: (e: MediaQueryListEvent) => void) {
+    this.listeners.add(l);
+  }
+  removeEventListener(_: 'change', l: (e: MediaQueryListEvent) => void) {
+    this.listeners.delete(l);
+  }
+  get listenerCount() {
+    return this.listeners.size;
+  }
   set(matches: boolean) {
     this.matches = matches;
     for (const l of this.listeners) l({ matches } as MediaQueryListEvent);
@@ -31,10 +37,13 @@ describe('Theme', () => {
     localStorage.clear();
     document.documentElement.classList.remove('dark');
     mq = new FakeMediaQuery(false);
-    vi.stubGlobal('matchMedia', vi.fn((query: string) => {
-      expect(query).toBe('(prefers-color-scheme: dark)');
-      return mq;
-    }));
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn((query: string) => {
+        expect(query).toBe('(prefers-color-scheme: dark)');
+        return mq;
+      }),
+    );
   });
 
   afterEach(() => {

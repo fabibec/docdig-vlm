@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 
-import { DocStatus } from '../../core/api/api.types';
+import type { DocStatus } from '../../core/api/api.types';
 import { TPipe } from '../../core/i18n/i18n';
 
 const STYLES: Record<DocStatus, string> = {

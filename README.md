@@ -23,7 +23,7 @@ Open problems and ideas are tracked in [Notes.md](Notes.md).
 uv sync                      # all groups: runtime + dev + ocr
 uv sync --no-group ocr       # without the optional local OCR steps
 cp .env.example .env         # set LLM_BASE_URL, LLM_API_KEY, LLM_MODEL_NAME
-cd frontend && npm ci
+cd frontend && pnpm install    # pnpm >= 12 (see "packageManager" in frontend/package.json)
 ```
 
 The PDF → image step needs `poppler` (`pdftoppm`) on the system. The optional OCR steps additionally need
@@ -88,10 +88,10 @@ price to [benchmark/prices.py](benchmark/prices.py) and re-run `report` to get t
 
 ```bash
 uv run granian --interface asgi --reload backend.api.app:app   # API on :8000
-cd frontend && npm start                                        # SPA on :4200, proxies /api
+cd frontend && pnpm start                                       # SPA on :4200, proxies /api
 ```
 
-Production-like without Docker: `cd frontend && npm run build`, then run granian. The app serves `frontend/dist/browser`.
+Production-like without Docker: `cd frontend && pnpm build`, then run granian. The app serves `frontend/dist/browser`.
 Local dev state goes to `data/state/` and `data/batches/` (both git-ignored).
 
 Main features: batch upload (with preview and rename before upload), live processing progress, cost per
@@ -105,8 +105,8 @@ uv run pytest tests/api              # only the API tests
 uv run pytest -m "not slow"          # skip tests marked slow
 uv run pytest --cov=backend --cov-report=term   # with coverage (pytest-cov, config in pyproject.toml)
 uv run ruff check backend            # config in pyproject.toml ([tool.ruff]); --fix applies safe fixes
-cd frontend && npm test              # Angular unit tests (*.spec.ts)
-cd frontend && npm run lint          # ESLint: typescript-eslint + angular-eslint (eslint.config.mjs); lint:fix
+cd frontend && pnpm test             # Angular unit tests (*.spec.ts)
+cd frontend && pnpm lint             # Biome lint + format check (biome.json); lint:fix applies fixes
 ```
 
 `tests/conftest.py` sets safe defaults before anything is imported: a dummy `LLM_BASE_URL`/`LLM_API_KEY`
@@ -132,7 +132,7 @@ Everything stateful lives in `/data`, which `compose.yaml` maps to `./data/docke
 ```
 
 Uncomment the `prompts` mount in `compose.yaml` to try a different LLM prompt without rebuilding.
-CI runs on GitLab (`.gitlab-ci.yml`): `test` (ruff + pytest, ESLint + `ng test`; also on merge requests) → `build`
+CI runs on GitLab (`.gitlab-ci.yml`): `test` (ruff + pytest, Biome + `ng test`; also on merge requests) → `build`
 (push to `registry.vogelwarte.ch`) → `health-check` on `main` and `testing`. `promote` and `deploy` are manual jobs
 (`testing` branch → port 8502, `production` branch → port 8501); each deploy reads `/opt/docdig/<env>/.env` and mounts
 `/opt/docdig/<env>/data` as `/data` on the host.

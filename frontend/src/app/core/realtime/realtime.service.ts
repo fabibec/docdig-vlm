@@ -1,7 +1,7 @@
 import { DestroyRef, Injectable, inject, signal } from '@angular/core';
 import { Subject } from 'rxjs';
 
-import { Progress, ServerEvent } from '../api/api.types';
+import type { Progress, ServerEvent } from '../api/api.types';
 
 /** Server -> client events over /api/ws with automatic reconnect. */
 @Injectable({ providedIn: 'root' })
@@ -28,8 +28,12 @@ export class Realtime {
 
   private connect(): void {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    const ws = (this.ws = new WebSocket(`${proto}://${location.host}/api/ws`));
-    ws.onopen = () => { this.retry = 0; this.connected.set(true); };
+    const ws = new WebSocket(`${proto}://${location.host}/api/ws`);
+    this.ws = ws;
+    ws.onopen = () => {
+      this.retry = 0;
+      this.connected.set(true);
+    };
     ws.onmessage = (msg) => this.handle(JSON.parse(msg.data) as ServerEvent);
     ws.onclose = () => {
       this.connected.set(false);

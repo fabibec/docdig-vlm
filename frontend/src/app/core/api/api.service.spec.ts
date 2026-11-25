@@ -1,8 +1,8 @@
-import { TestBed } from '@angular/core/testing';
 import { HttpEventType, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { Observable } from 'rxjs';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { TestBed } from '@angular/core/testing';
+import type { Observable } from 'rxjs';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { Api } from './api.service';
 
@@ -11,7 +11,9 @@ describe('Api', () => {
   let http: HttpTestingController;
 
   beforeEach(() => {
-    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting()] });
+    TestBed.configureTestingModule({
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    });
     api = TestBed.inject(Api);
     http = TestBed.inject(HttpTestingController);
   });
@@ -61,17 +63,50 @@ describe('Api', () => {
 
   describe('write calls', () => {
     const cases: [string, () => Observable<unknown>, string, string, unknown][] = [
-      ['resolveRow', () => api.resolveRow('d1', 2, 7, { values: { species: 'Amsel' } }),
-        'POST', '/api/docs/d1/page/2/rows/7/resolve', { values: { species: 'Amsel' } }],
-      ['resolvePage', () => api.resolvePage('d1', 2, { rows: { 3: { sex: 'M' } } }),
-        'POST', '/api/docs/d1/page/2/resolve', { rows: { 3: { sex: 'M' } } }],
-      ['createFlag', () => api.createFlag('d1', { page: 1, row: 4, column: null, message: 'check' }),
-        'POST', '/api/docs/d1/flags', { page: 1, row: 4, column: null, message: 'check' }],
+      [
+        'resolveRow',
+        () => api.resolveRow('d1', 2, 7, { values: { species: 'Amsel' } }),
+        'POST',
+        '/api/docs/d1/page/2/rows/7/resolve',
+        { values: { species: 'Amsel' } },
+      ],
+      [
+        'resolvePage',
+        () => api.resolvePage('d1', 2, { rows: { 3: { sex: 'M' } } }),
+        'POST',
+        '/api/docs/d1/page/2/resolve',
+        { rows: { 3: { sex: 'M' } } },
+      ],
+      [
+        'createFlag',
+        () => api.createFlag('d1', { page: 1, row: 4, column: null, message: 'check' }),
+        'POST',
+        '/api/docs/d1/flags',
+        { page: 1, row: 4, column: null, message: 'check' },
+      ],
       ['deleteFlag', () => api.deleteFlag('d1', 42), 'DELETE', '/api/docs/d1/flags/42', null],
-      ['reopenFlags', () => api.reopenFlags('d1', [1, 2]), 'POST', '/api/docs/d1/flags/reopen', { ids: [1, 2] }],
+      [
+        'reopenFlags',
+        () => api.reopenFlags('d1', [1, 2]),
+        'POST',
+        '/api/docs/d1/flags/reopen',
+        { ids: [1, 2] },
+      ],
       ['deleteBatch', () => api.deleteBatch('b1'), 'DELETE', '/api/batches/b1', null],
-      ['updateBatch', () => api.updateBatch('b1', { name: 'New' }), 'PATCH', '/api/batches/b1', { name: 'New' }],
-      ['updateDoc', () => api.updateDoc('d1', { filename: 'x.pdf' }), 'PATCH', '/api/docs/d1', { filename: 'x.pdf' }],
+      [
+        'updateBatch',
+        () => api.updateBatch('b1', { name: 'New' }),
+        'PATCH',
+        '/api/batches/b1',
+        { name: 'New' },
+      ],
+      [
+        'updateDoc',
+        () => api.updateDoc('d1', { filename: 'x.pdf' }),
+        'PATCH',
+        '/api/docs/d1',
+        { filename: 'x.pdf' },
+      ],
     ];
     for (const [name, call, method, url, body] of cases) {
       it(`${name} sends ${method} ${url}`, () => {

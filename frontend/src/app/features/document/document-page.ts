@@ -1,14 +1,21 @@
-import { ChangeDetectionStrategy, Component, inject, input, linkedSignal, signal } from '@angular/core';
 import { httpResource } from '@angular/common/http';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  inject,
+  input,
+  linkedSignal,
+  signal,
+} from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideArrowLeft } from '@ng-icons/lucide';
 
 import { Api } from '../../core/api/api.service';
-import { DocDetail, PageRows } from '../../core/api/api.types';
+import type { DocDetail, PageRows } from '../../core/api/api.types';
 import { TPipe } from '../../core/i18n/i18n';
 import { EmptyState } from '../../shared/ui/empty-state';
-import { PipelineViewer, ViewerStep } from '../../shared/ui/pipeline-viewer';
+import { PipelineViewer, type ViewerStep } from '../../shared/ui/pipeline-viewer';
 import { StatusBadge } from '../../shared/ui/status-badge';
 
 /** Read-only 3-step view for one document (`/:docSlug`). */

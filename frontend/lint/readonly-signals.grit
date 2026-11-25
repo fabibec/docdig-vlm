@@ -1,0 +1,21 @@
+language js
+
+JsPropertyClassMember(modifiers=$mods, value=JsInitializerClause(expression=JsCallExpression(callee=$callee))) as $member where {
+  $callee <: or {
+    `signal`,
+    `computed`,
+    `linkedSignal`,
+    `viewChildren`,
+    `contentChildren`,
+    `input`,
+    `input.required`,
+    `model`,
+    `model.required`,
+    `viewChild`,
+    `viewChild.required`,
+    `contentChild`,
+    `contentChild.required`
+  },
+  not $mods <: contains `readonly`,
+  register_diagnostic(span=$member, message="Signal properties must be readonly.")
+}

@@ -1,10 +1,9 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-
-import { UploadDialog } from './upload-dialog';
+import { type ComponentFixture, TestBed } from '@angular/core/testing';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { I18n } from '../../core/i18n/i18n';
+import { UploadDialog } from './upload-dialog';
 
 // Zard dialog content is rendered in the CDK overlay container (document.body), not inside the fixture.
 const overlayRoot = () => document.body;
@@ -15,7 +14,9 @@ function pdf(name: string, content = `content of ${name}`, lastModified = 170000
 
 /** FileList stand-in for drop / <input type=file> change events. */
 function fileList(files: File[]): FileList {
-  return Object.assign([...files], { item: (i: number) => files[i] ?? null }) as unknown as FileList;
+  return Object.assign([...files], {
+    item: (i: number) => files[i] ?? null,
+  }) as unknown as FileList;
 }
 
 describe('UploadDialog', () => {
@@ -29,10 +30,14 @@ describe('UploadDialog', () => {
   const file3 = pdf('third_doc.pdf', 'dummy 3 content', 1700000002000);
 
   const q = <T extends Element = HTMLElement>(sel: string) => overlayRoot().querySelector<T>(sel);
-  const qa = <T extends Element = HTMLElement>(sel: string) => overlayRoot().querySelectorAll<T>(sel);
+  const qa = <T extends Element = HTMLElement>(sel: string) =>
+    overlayRoot().querySelectorAll<T>(sel);
   const byLabel = (key: string) => qa<HTMLButtonElement>(`button[aria-label="${t(key)}"]`);
   const names = () => [...qa('li > span.truncate')].map((s) => s.textContent?.trim());
-  const sendButton = () => [...qa<HTMLButtonElement>('z-dialog-footer button')].find((b) => b.textContent?.includes(t('upload.send', { n: component.files().length })))!;
+  const sendButton = () =>
+    [...qa<HTMLButtonElement>('z-dialog-footer button')].find((b) =>
+      b.textContent?.includes(t('upload.send', { n: component.files().length })),
+    )!;
 
   /** Drops files onto the drop zone. */
   function drop(files: File[]) {
@@ -73,15 +78,27 @@ describe('UploadDialog', () => {
 
     it('adds dropped PDFs sorted by name and silently drops non-PDF files', () => {
       component.files.set([]);
-      drop([pdf('scan10.pdf'), new File(['x'], 'notes.txt', { type: 'text/plain' }), pdf('scan2.PDF'), pdf('scan1.pdf')]);
+      drop([
+        pdf('scan10.pdf'),
+        new File(['x'], 'notes.txt', { type: 'text/plain' }),
+        pdf('scan2.PDF'),
+        pdf('scan1.pdf'),
+      ]);
       expect(names()).toEqual(['scan1.pdf', 'scan2.PDF', 'scan10.pdf']);
       expect(overlayRoot().textContent).not.toContain('notes.txt');
     });
 
     it('skips duplicate names with a notice', () => {
       drop([pdf('first_doc.pdf'), pdf('new.pdf'), pdf('new.pdf')]);
-      expect(component.files().map((f) => f.name)).toEqual(['first_doc.pdf', 'new.pdf', 'second_doc.pdf', 'third_doc.pdf']);
-      expect(overlayRoot().textContent).toContain(t('upload.duplicates', { names: 'first_doc.pdf, new.pdf' }));
+      expect(component.files().map((f) => f.name)).toEqual([
+        'first_doc.pdf',
+        'new.pdf',
+        'second_doc.pdf',
+        'third_doc.pdf',
+      ]);
+      expect(overlayRoot().textContent).toContain(
+        t('upload.duplicates', { names: 'first_doc.pdf, new.pdf' }),
+      );
     });
 
     it('removes a file with the ✕ button', () => {
@@ -91,7 +108,9 @@ describe('UploadDialog', () => {
     });
 
     it('paginates the preview with 10 files per page', () => {
-      component.files.set(Array.from({ length: 12 }, (_, i) => pdf(`f${String(i + 1).padStart(2, '0')}.pdf`)));
+      component.files.set(
+        Array.from({ length: 12 }, (_, i) => pdf(`f${String(i + 1).padStart(2, '0')}.pdf`)),
+      );
       fixture.detectChanges();
       expect(names().length).toBe(10);
       expect(overlayRoot().textContent).toContain(t('pager.range', { from: 1, to: 10, total: 12 }));
@@ -102,7 +121,9 @@ describe('UploadDialog', () => {
     });
 
     it('goes back a page when the last file of the last page is removed', () => {
-      component.files.set(Array.from({ length: 11 }, (_, i) => pdf(`f${String(i + 1).padStart(2, '0')}.pdf`)));
+      component.files.set(
+        Array.from({ length: 11 }, (_, i) => pdf(`f${String(i + 1).padStart(2, '0')}.pdf`)),
+      );
       fixture.detectChanges();
       q<HTMLButtonElement>(`button[aria-label="${t('pager.next')}"]`)!.click();
       fixture.detectChanges();
@@ -123,7 +144,9 @@ describe('UploadDialog', () => {
 
   describe('preview', () => {
     it('opens the file as blob URL in a new tab', () => {
-      const createSpy = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:http://localhost/test-preview');
+      const createSpy = vi
+        .spyOn(URL, 'createObjectURL')
+        .mockReturnValue('blob:http://localhost/test-preview');
       const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
 
       const previewButtons = byLabel('upload.preview');
@@ -222,7 +245,9 @@ describe('UploadDialog', () => {
 
       expect(component.files()).toEqual([file1, file2, file3]);
       expect(component.editingFile()).toBe(file1);
-      expect(q('li form')!.textContent).toContain(t('upload.renameDuplicate', { name: 'second_doc.pdf' }));
+      expect(q('li form')!.textContent).toContain(
+        t('upload.renameDuplicate', { name: 'second_doc.pdf' }),
+      );
     });
 
     it('accepts the unchanged own name', () => {
@@ -284,7 +309,11 @@ describe('UploadDialog', () => {
 
       const req = httpMock.expectOne('/api/batches');
       const form = req.request.body as FormData;
-      expect((form.getAll('files') as File[]).map((f) => f.name)).toEqual(['final_upload.pdf', 'second_doc.pdf', 'third_doc.pdf']);
+      expect((form.getAll('files') as File[]).map((f) => f.name)).toEqual([
+        'final_upload.pdf',
+        'second_doc.pdf',
+        'third_doc.pdf',
+      ]);
       req.flush({});
     });
   });
@@ -331,24 +360,33 @@ describe('UploadDialog', () => {
       fixture.detectChanges();
       expect(overlayRoot().textContent).toContain(t('upload.uploading', { pct: 42 }));
 
-      [...qa<HTMLButtonElement>('z-dialog-footer button')].find((b) => b.textContent?.trim() === t('upload.cancel'))!.click();
+      [...qa<HTMLButtonElement>('z-dialog-footer button')]
+        .find((b) => b.textContent?.trim() === t('upload.cancel'))!
+        .click();
       expect(closed).not.toHaveBeenCalled();
       req.flush({});
     });
 
     it('shows the duplicate names returned by the server (409)', () => {
       sendButton().click();
-      httpMock.expectOne('/api/batches').flush(
-        { detail: 'duplicate_files', filenames: ['a.pdf', 'b.pdf'] }, { status: 409, statusText: 'Conflict' },
-      );
+      httpMock
+        .expectOne('/api/batches')
+        .flush(
+          { detail: 'duplicate_files', filenames: ['a.pdf', 'b.pdf'] },
+          { status: 409, statusText: 'Conflict' },
+        );
       fixture.detectChanges();
-      expect(overlayRoot().textContent).toContain(t('upload.serverDuplicates', { names: 'a.pdf, b.pdf' }));
+      expect(overlayRoot().textContent).toContain(
+        t('upload.serverDuplicates', { names: 'a.pdf, b.pdf' }),
+      );
       expect(sendButton().disabled).toBe(false);
     });
 
     it('shows other server errors', () => {
       sendButton().click();
-      httpMock.expectOne('/api/batches').flush({ detail: 'disk full' }, { status: 500, statusText: 'Server Error' });
+      httpMock
+        .expectOne('/api/batches')
+        .flush({ detail: 'disk full' }, { status: 500, statusText: 'Server Error' });
       fixture.detectChanges();
       expect(overlayRoot().textContent).toContain(t('upload.failed', { msg: 'disk full' }));
     });
@@ -356,7 +394,9 @@ describe('UploadDialog', () => {
     it('emits closed on cancel', () => {
       const closed = vi.fn();
       component.closed.subscribe(closed);
-      [...qa<HTMLButtonElement>('z-dialog-footer button')].find((b) => b.textContent?.trim() === t('upload.cancel'))!.click();
+      [...qa<HTMLButtonElement>('z-dialog-footer button')]
+        .find((b) => b.textContent?.trim() === t('upload.cancel'))!
+        .click();
       expect(closed).toHaveBeenCalledOnce();
     });
   });

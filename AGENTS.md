@@ -33,12 +33,13 @@ frontend/src/app/            Angular 22, standalone, zoneless, signals, httpReso
   core/i18n/{de,en,fr}.ts    dictionaries (de.ts is the source of TranslationKey)
   features/{batches,review,document}/   pages; shared/ui/ reusable components
   shared/core, shared/utils  vendored zard code: do not edit, not linted
+frontend/biome.json lint/     Biome config + GritQL plugins for Angular rules (OnPush, readonly signals, @if/@for)
 benchmark/                   `uv run -m benchmark run|report`: collect.py (LLM → raw cells.csv), scoring.py, report.py
 backend/logging_config.py    LOG_* settings, console text + rotating JSON-lines file, worker log queue
 tests/                       pytest: api/ (routes, flags, processing, WS, DB), pipeline/, benchmark/, test_logging.py
   conftest.py                dummy LLM env, LOG_FILE=, tmp WEB_DATA_DIR (set before imports)
   api/conftest.py helpers.py `api` fixture (own SQLite + artifact dir, no process pool) + Factory for rows
-.gitlab-ci.yml               test (pytest+ruff, eslint+ng test) → build → health-check → manual promote/deploy
+.gitlab-ci.yml               test (pytest+ruff, biome+ng test) → build → health-check → manual promote/deploy
 data/prompts/llm_prompt.txt  the LLM prompt (copied into the Docker image)
 data/dataset/                ground truth (pdfs/ + output/<pdf>_pNNN.csv, `;`-separated) — edit only on request
 ```
@@ -49,11 +50,11 @@ data/dataset/                ground truth (pdfs/ + output/<pdf>_pNNN.csv, `;`-se
 uv sync                                    # Python 3.12; all groups (dev + ocr)
 uv run pytest                              # ~20 s, no network; --cov=backend for coverage
 uv run ruff check backend [--fix]          # line length 120
-cd frontend && npm test                    # Angular unit tests
-cd frontend && npm run lint                # ESLint
-cd frontend && npm run build               # type-checks templates too
+cd frontend && pnpm test                   # Angular unit tests
+cd frontend && pnpm lint                   # Biome lint + format check; pnpm lint:fix
+cd frontend && pnpm build                  # type-checks templates too
 uv run granian --interface asgi --reload backend.api.app:app   # API :8000
-cd frontend && npm start                   # SPA :4200 (proxies /api + /ws)
+cd frontend && pnpm start                  # SPA :4200 (proxies /api + /ws)
 uv run python -m backend.pipeline run <pdf> -o data/output [--steps raw,cropped,processed] [--page N] [--draw-rows]
 docker compose up --build                  # :8000, state in ./data/docker
 ```
@@ -117,4 +118,7 @@ The `processed` step and the benchmark call a paid LLM API (`.env`). Do not run 
   `logs/`) hold real state and are git-ignored. Do not delete them; stop the container before touching `data/docker/state/app.db`.
 - The Docker image installs only runtime deps (`uv sync --no-default-groups`): anything imported by the API at
   module level must be in `[project].dependencies`, not in the `ocr`/`dev` groups.
+- The frontend uses pnpm: the version in `frontend/package.json` (`packageManager`), the `Dockerfile` and
+  `PNPM_VERSION` in `.gitlab-ci.yml` must match. New packages with install scripts go into `pnpm-workspace.yaml`
+  (`allowBuilds`), otherwise `pnpm install` fails.
 - `.dockerignore` excludes `docs`, `benchmark`, `*.md` and all of `data/` except `data/prompts`.

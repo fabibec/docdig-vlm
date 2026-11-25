@@ -1,0 +1,6 @@
+language js
+
+`template: $tpl` where {
+  $tpl <: r"(?s).*\*ng(?:If|For|Switch|SwitchCase|SwitchDefault)\b.*",
+  register_diagnostic(span=$tpl, message="Use @if / @for / @switch instead of structural directives.")
+}

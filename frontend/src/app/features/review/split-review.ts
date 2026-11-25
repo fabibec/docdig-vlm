@@ -1,18 +1,39 @@
 import {
-  ChangeDetectionStrategy, Component, ElementRef, computed, effect, inject, input, model, output, signal, viewChild,
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  type ElementRef,
+  effect,
+  inject,
+  input,
+  model,
+  output,
+  signal,
+  viewChild,
 } from '@angular/core';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideCheck, lucideColumns, lucideTriangleAlert } from '@ng-icons/lucide';
 
 import { Api } from '../../core/api/api.service';
-import { ColumnKey, COLUMNS, FlagOut, PageInfo, PageRows } from '../../core/api/api.types';
+import {
+  COLUMNS,
+  type ColumnKey,
+  type FlagOut,
+  type PageInfo,
+  type PageRows,
+} from '../../core/api/api.types';
 import { I18n, TPipe } from '../../core/i18n/i18n';
 import { flagText } from './record-editor';
 
 export type PageDraft = Record<number, Partial<Record<ColumnKey, string>>>;
 export type CellState = 'default' | 'yellow' | 'green' | 'blue';
 
-interface RectBox { x: number; y: number; w: number; h: number }
+interface RectBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 /**
  * Side-by-side split view for reviewing an entire page:
@@ -229,10 +250,12 @@ export class SplitReview {
   });
 
   protected readonly activeRowRect = computed<RectBox | null>(() => {
-    const r = this.rows(), sel = this.activeRow();
+    const r = this.rows(),
+      sel = this.activeRow();
     const row = sel === null ? undefined : r?.rows.find((x) => x.idx === sel);
     if (!r || !row) return null;
-    const x0 = r.column_x.ring_no[0], x1 = r.column_x.additional_remark[1];
+    const x0 = r.column_x.ring_no[0],
+      x1 = r.column_x.additional_remark[1];
     return { x: x0, y: row.y0, w: x1 - x0, h: row.y1 - row.y0 };
   });
 
@@ -252,14 +275,18 @@ export class SplitReview {
 
     // Scroll the cropped image when activeRow changes.
     effect(() => {
-      const rect = this.activeRowRect(), frame = this.frame()?.nativeElement, r = this.rows();
+      const rect = this.activeRowRect(),
+        frame = this.frame()?.nativeElement,
+        r = this.rows();
       if (!rect || !frame || !r) return;
       const img = frame.querySelector('img');
       const scroll = () => {
         const scale = (img?.clientHeight ?? 0) / r.height;
-        if (scale) frame.scrollTo({ top: rect.y * scale - frame.clientHeight / 3, behavior: 'smooth' });
+        if (scale)
+          frame.scrollTo({ top: rect.y * scale - frame.clientHeight / 3, behavior: 'smooth' });
       };
-      if (img?.complete) scroll(); else img?.addEventListener('load', scroll, { once: true });
+      if (img?.complete) scroll();
+      else img?.addEventListener('load', scroll, { once: true });
     });
   }
 
@@ -279,7 +306,9 @@ export class SplitReview {
   }
 
   protected cellFlags(rowIdx: number, col: ColumnKey): FlagOut[] {
-    return this.pageFlags().filter((f) => f.row === rowIdx && (f.column === col || f.column === null));
+    return this.pageFlags().filter(
+      (f) => f.row === rowIdx && (f.column === col || f.column === null),
+    );
   }
 
   protected cellValue(rowIdx: number, col: ColumnKey): string {
@@ -294,7 +323,8 @@ export class SplitReview {
     const locallyResolved = this.resolvedKeys().has(key);
     const row = this.rows()?.rows.find((r) => r.idx === rowIdx);
     const dVal = this.draft()[rowIdx]?.[col];
-    const hasDraftChange = dVal !== undefined && row !== undefined && dVal.trim() !== (row.values[col] ?? '');
+    const hasDraftChange =
+      dVal !== undefined && row !== undefined && dVal.trim() !== (row.values[col] ?? '');
     const wasCorrected = row?.corrected.includes(col) ?? false;
 
     if (cFlags.length > 0) {
@@ -337,7 +367,10 @@ export class SplitReview {
 
   protected popoverPosClass(rowIdx: number, totalRows: number, col: ColumnKey): string {
     const vPos = rowIdx <= 2 && totalRows > 2 ? 'top-full mt-1' : 'bottom-full mb-1';
-    const hPos = col === 'additional_remark' || col === 'weight_g' || col === 'wing_length_mm' ? 'right-0' : 'left-0';
+    const hPos =
+      col === 'additional_remark' || col === 'weight_g' || col === 'wing_length_mm'
+        ? 'right-0'
+        : 'left-0';
     return `${vPos} ${hPos}`;
   }
 
@@ -383,14 +416,18 @@ export class SplitReview {
   }
 
   protected imageClick(ev: MouseEvent): void {
-    const r = this.rows(), el = ev.currentTarget as HTMLElement;
+    const r = this.rows(),
+      el = ev.currentTarget as HTMLElement;
     if (!r || !el.clientWidth) return;
-    const x = (ev.offsetX / el.clientWidth) * r.width, y = (ev.offsetY / el.clientHeight) * r.height;
+    const x = (ev.offsetX / el.clientWidth) * r.width,
+      y = (ev.offsetY / el.clientHeight) * r.height;
     const row = r.rows.find((x0) => y >= x0.y0 && y < x0.y1);
     if (!row) return;
     const col = COLUMNS.find((c) => x >= r.column_x[c][0] && x < r.column_x[c][1]) ?? COLUMNS[0];
     this.activeRow.set(row.idx);
-    const inputEl = this.tableWrap()?.nativeElement.querySelector<HTMLInputElement>(`#split-cell-${row.idx}-${col}`);
+    const inputEl = this.tableWrap()?.nativeElement.querySelector<HTMLInputElement>(
+      `#split-cell-${row.idx}-${col}`,
+    );
     inputEl?.focus();
     inputEl?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }

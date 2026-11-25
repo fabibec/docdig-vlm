@@ -253,7 +253,7 @@ you add a column. Paths are stored relative to the artifact root.
 - Tests that render PDFs need `pdftoppm` (poppler) and are skipped without it.
 - Coverage: `uv run pytest --cov=backend`. Keep `concurrency = ["greenlet", "thread"]` in
   `[tool.coverage.run]`, otherwise code after async SQLAlchemy calls shows as uncovered.
-- The GitLab `test:backend` job runs ruff and pytest with coverage; `test:frontend` runs ESLint and `ng test`.
+- The GitLab `test:backend` job runs ruff and pytest with coverage; `test:frontend` runs Biome and `ng test`.
 
 ## Later: auth + Nextcloud
 

@@ -1,4 +1,4 @@
-import { Dictionary } from './de';
+import type { Dictionary } from './de';
 
 export const en: Dictionary = {
   'app.reviewQueue': 'Review queue',
@@ -101,7 +101,8 @@ export const en: Dictionary = {
   'review.splitView': 'Open split view',
   'review.columnView': 'Open column view',
   'review.resolveCell': 'Mark as resolved',
-  'review.unresolvedWarn': 'There are still {n} unresolved flag(s) on this page. Save anyway and mark all as resolved?',
+  'review.unresolvedWarn':
+    'There are still {n} unresolved flag(s) on this page. Save anyway and mark all as resolved?',
   'review.saveAnyway': 'Save anyway',
   'source.llm': 'AI',
   'source.rule': 'Rule',
