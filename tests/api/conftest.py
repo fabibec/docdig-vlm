@@ -10,7 +10,6 @@ from collections.abc import Iterable
 
 import pytest
 from fastapi.testclient import TestClient
-from pydantic import BaseModel
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
@@ -24,7 +23,7 @@ import backend.api.routes.realtime as api_realtime
 from backend.api.hub import hub
 from backend.api.processing import processor
 from backend.api.storage import store
-from tests.api.helpers import ApiEnv, Factory
+from tests.api.helpers import ApiEnv, Event, Factory
 
 
 @pytest.fixture
@@ -54,10 +53,10 @@ def api(tmp_path, monkeypatch) -> Iterable[ApiEnv]:
             yield session
 
     enqueued: list[int] = []
-    events: list[BaseModel] = []
+    events: list[Event] = []
     real_broadcast = hub.broadcast
 
-    async def recording_broadcast(*evs: BaseModel):
+    async def recording_broadcast(*evs: Event):
         events.extend(evs)
         await real_broadcast(*evs)
 

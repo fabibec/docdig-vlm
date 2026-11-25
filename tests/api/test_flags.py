@@ -8,7 +8,7 @@ from backend.pipeline.models.llm_responses import PageTable, TableRow, Uncertain
 from backend.pipeline.models.results import PageGeometry, PageResult
 
 
-def _row(n: int = 1, **values: str) -> TableRow:
+def _row(n: int = 1, /, **values: str) -> TableRow:
     return TableRow(row_number=n, **({c.value: "" for c in ColumnKey} | values))
 
 

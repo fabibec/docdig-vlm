@@ -6,13 +6,15 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from backend.pipeline.directories import PROJECT_ROOT, PROMPT_DIR
 
+ReasoningEffort = Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"]
+
 
 class Settings(BaseSettings):
     # LLM Extractor
     llm_api_url: HttpUrl = Field(alias="LLM_BASE_URL")
     llm_api_key: str
     llm_model_name: str = Field(default="openai/gpt-6-luna")
-    llm_reasoning_effort: Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] = Field(default="low")
+    llm_reasoning_effort: ReasoningEffort = Field(default="low")
     llm_seed: int = Field(default=42)
     step_concurrency: int = Field(default=100)
     llm_prompt_file: FilePath = Field(default=PROMPT_DIR / "llm_prompt.txt")

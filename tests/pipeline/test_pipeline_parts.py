@@ -12,7 +12,13 @@ from backend.pipeline import STEP_NAMES, build_pipeline
 from backend.pipeline.models.llm_responses import ExtractionResult, PageTable, TableRow
 from backend.pipeline.models.pipeline_parts import Pipeline, PipelineStep, PipelineTask, collect_result, page_stem
 from backend.pipeline.models.results import DocResult, PageGeometry
-from backend.pipeline.steps import ImgExtractor, LlmExtractor, TableExtractor, TableOrientationDetector
+from backend.pipeline.steps import (
+    ImgExtractor,
+    LlmExtractor,
+    LlmPostprocessor,
+    TableExtractor,
+    TableOrientationDetector,
+)
 from tests.pipeline.helpers import PROJECT_ROOT
 
 
@@ -158,8 +164,9 @@ def test_collect_result_of_empty_run_has_no_pages(make_task):
 
 
 class Recorder(PipelineStep):
-    def __init__(self, name: str, log: list):
-        self.name = name
+    name = "recorder"
+
+    def __init__(self, log: list):
         self.log = log
 
     def setup(self):
@@ -173,12 +180,17 @@ class Recorder(PipelineStep):
         task.report(self.name, 1, 1)
 
 
+def recorder(name: str, log: list) -> Recorder:
+    """A Recorder whose step ``name`` (a ClassVar on real steps) is ``name``."""
+    return type(f"Recorder_{name}", (Recorder,), {"name": name})(log)
+
+
 @pytest.fixture
 def recorded():
     log: list = []
     pipeline = Pipeline()
     for name in ("raw", "cropped", "processed"):
-        pipeline.add_step(Recorder(name, log))
+        pipeline.add_step(recorder(name, log))
     return pipeline, log
 
 
@@ -250,7 +262,7 @@ def test_context_manager_closes_on_error(recorded):
 
 def test_add_step_is_chainable():
     p = Pipeline()
-    step = Recorder("raw", [])
+    step = recorder("raw", [])
     assert p.add_step(step) is p
     assert p.steps == [step]
 
@@ -260,16 +272,25 @@ def test_add_step_is_chainable():
 
 def test_default_pipeline_composition():
     pipeline = build_pipeline()
-    assert [type(s) for s in pipeline.steps] == [ImgExtractor, TableExtractor, TableOrientationDetector, LlmExtractor]
-    assert [s.name for s in pipeline.steps] == ["raw", "cropped", "cropped", "processed"]
+    assert [type(s) for s in pipeline.steps] == [
+        ImgExtractor,
+        TableExtractor,
+        TableOrientationDetector,
+        LlmExtractor,
+        LlmPostprocessor,
+    ]
+    assert [s.name for s in pipeline.steps] == ["raw", "cropped", "cropped", "processed", "processed"]
     assert {s.name for s in pipeline.steps} == set(STEP_NAMES)
 
 
 def test_draw_rows_is_passed_to_table_steps():
-    pipeline = build_pipeline(draw_rows=True)
-    assert pipeline.steps[1].draw_rows is True
-    assert pipeline.steps[2].draw_rows is True
-    assert build_pipeline().steps[1].draw_rows is False
+    table, orientation = build_pipeline(draw_rows=True).steps[1:3]
+    default_table = build_pipeline().steps[1]
+    assert isinstance(table, TableExtractor) and isinstance(orientation, TableOrientationDetector)
+    assert isinstance(default_table, TableExtractor)
+    assert table.draw_rows is True
+    assert orientation.draw_rows is True
+    assert default_table.draw_rows is False
 
 
 @pytest.mark.parametrize(
@@ -295,6 +316,7 @@ def test_ocr_flags_replace_the_llm_step(flags, expected, monkeypatch):
     assert names[:3] == ["ImgExtractor", "TableExtractor", "TableOrientationDetector"]
     assert names[3:] == expected
     assert "LlmExtractor" not in names
+    assert "LlmPostprocessor" not in names
 
 
 def test_steps_package_imports_ocr_modules_lazily():

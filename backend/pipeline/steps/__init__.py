@@ -1,5 +1,6 @@
 from .img_extractor import ImgExtractor
 from .llm_extractor import LlmExtractor
+from .llm_postprocessor import LlmPostprocessor
 from .table_extractor import TableExtractor
 from .table_orientation_detector import TableOrientationDetector
 
@@ -20,6 +21,7 @@ def __getattr__(name: str):
 __all__ = [
     "ImgExtractor",
     "LlmExtractor",
+    "LlmPostprocessor",
     "OcrExtractor",
     "TableExtractor",
     "TableOrientationDetector",

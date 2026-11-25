@@ -12,15 +12,17 @@ from pathlib import Path
 from typing import Any
 
 from fastapi.testclient import TestClient
-from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from backend.api.enums import COLUMNS, DocStatus, FlagSource, Severity
-from backend.api.models import Batch, Doc, Flag, Page, Row
+from backend.api.models import Batch, Doc, Flag, Page, Row, pk
 from backend.api.queries import load_doc, refresh_doc_flags
+from backend.api.schemas import BatchEvent, DocEvent, ReviewEvent
 from backend.api.storage import store
+
+Event = DocEvent | BatchEvent | ReviewEvent  # what hub.broadcast() sends
 
 # 12 grid lines for the 11 printed columns, 100 px apart.
 COL_BOUNDS = [i * 100 for i in range(12)]
@@ -57,11 +59,13 @@ class ApiEnv:
     session_maker: async_sessionmaker[AsyncSession]
     batches_dir: Path
     enqueued: list[int] = field(default_factory=list)
-    events: list[BaseModel] = field(default_factory=list)  # every hub.broadcast() event, in order
+    events: list[Event] = field(default_factory=list)  # every hub.broadcast() event, in order
 
     def run(self, fn: Callable[..., Awaitable[Any]], *args: Any) -> Any:
         """Run ``await fn(*args)`` on the app's event loop and return the result."""
-        return self.client.portal.call(fn, *args)
+        portal = self.client.portal
+        assert portal is not None, "the TestClient must be entered (with TestClient(app) as client)"
+        return portal.call(fn, *args)
 
     def event_types(self) -> list[str]:
         return [e.type for e in self.events]
@@ -109,7 +113,7 @@ class Factory:
         **kw,
     ) -> Doc:
         slug = slug or f"{batch.slug}-doc-{next(self._seq)}"
-        doc = self._add(Doc(slug=slug, batch_id=batch.id, filename=filename, status=status, **kw))
+        doc = self._add(Doc(slug=slug, batch_id=pk(batch), filename=filename, status=status, **kw))
         if with_file:
             path = store.input_pdf(f"{batch.slug}/{slug}", filename)
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -117,27 +121,23 @@ class Factory:
         return doc
 
     def page(self, doc: Doc, num: int = 1, **kw) -> Page:
-        kw = {"width": 1100, "height": 800, "col_bounds": COL_BOUNDS, "page_confidence": 0.9} | kw
-        return self._add(Page(doc_id=doc.id, num=num, **kw))
+        defaults: dict[str, Any] = {"width": 1100, "height": 800, "col_bounds": COL_BOUNDS, "page_confidence": 0.9}
+        return self._add(Page(doc_id=pk(doc), num=num, **(defaults | kw)))
 
     def row(self, page: Page, idx: int, values: dict[str, str] | None = None, **kw) -> Row:
-        kw = {"y0": 100 + (idx - 1) * 50, "y1": 150 + (idx - 1) * 50, "corrections": {}} | kw
-        return self._add(Row(page_id=page.id, idx=idx, values=empty_values(**(values or {})), **kw))
+        defaults: dict[str, Any] = {"y0": 100 + (idx - 1) * 50, "y1": 150 + (idx - 1) * 50, "corrections": {}}
+        return self._add(Row(page_id=pk(page), idx=idx, values=empty_values(**(values or {})), **(defaults | kw)))
 
     def flag(self, doc: Doc, page_num: int = 1, row_idx: int = 1, **kw) -> Flag:
-        kw = {
-            "source": FlagSource.rule,
-            "severity": Severity.warning,
-            "message": "check this",
-        } | kw
-        return self._add(Flag(doc_id=doc.id, page_num=page_num, row_idx=row_idx, **kw))
+        defaults: dict[str, Any] = {"source": FlagSource.rule, "severity": Severity.warning, "message": "check this"}
+        return self._add(Flag(doc_id=pk(doc), page_num=page_num, row_idx=row_idx, **(defaults | kw)))
 
     def refresh_flags(self, doc: Doc) -> None:
         """Recompute open_flags + status like the routes do."""
 
         async def go():
             async with self.api.session_maker() as s:
-                await refresh_doc_flags(s, await load_doc(s, doc.id))
+                await refresh_doc_flags(s, await load_doc(s, pk(doc)))
                 await s.commit()
 
         self.api.run(go)

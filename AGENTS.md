@@ -14,6 +14,7 @@ PDF → `raw/` page JPGs → `cropped/` table crop + `pNNN.geom.json` (rows/cols
 ```
 backend/pipeline/            standalone pipeline, NO imports from backend/api
   __init__.py                build_pipeline(): ImgExtractor → TableExtractor → TableOrientationDetector → LlmExtractor
+                             → LlmPostprocessor (ditto marks)
   steps/                     one class per step (PipelineStep: name, setup, execute, close)
   models/pipeline_parts.py   Pipeline, PipelineTask, collect_result (disk → DocResult)
   models/results.py          PageGeometry, PageResult, DocResult
@@ -32,7 +33,7 @@ frontend/src/app/            Angular 22, standalone, zoneless, signals, httpReso
   core/i18n/{de,en,fr}.ts    dictionaries (de.ts is the source of TranslationKey)
   features/{batches,review,document}/   pages; shared/ui/ reusable components
   shared/core, shared/utils  vendored zard code: do not edit, not linted
-benchmark/run_benchmark.py   scores processed CSVs vs data/dataset/output/*.csv
+benchmark/                   `uv run -m benchmark run|report`: collect.py (LLM → raw cells.csv), scoring.py, report.py
 backend/logging_config.py    LOG_* settings, console text + rotating JSON-lines file, worker log queue
 tests/                       pytest: api/ (routes, flags, processing, WS, DB), pipeline/, benchmark/, test_logging.py
   conftest.py                dummy LLM env, LOG_FILE=, tmp WEB_DATA_DIR (set before imports)
@@ -74,7 +75,7 @@ The `processed` step and the benchmark call a paid LLM API (`.env`). Do not run 
   optional deps), register in `build_pipeline()`. Its `name` must be an existing step name / `ArtifactState`
   (`raw`, `cropped`, `processed`) or the API progress events break; CLI-only steps go into `__main__._steps`.
 - **Column set change:** `enums.ColumnKey` + `COLUMN_GRID_SPAN`, `flags.HEADER_KEYS`, LLM prompt, benchmark
-  `COLUMNS`, frontend `col.*` i18n keys.
+  `scoring.COLUMNS`, frontend `col.*` i18n keys.
 
 ## Invariants
 

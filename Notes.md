@@ -25,7 +25,7 @@
 - OP 12: Additional Remarks are sometimes outside of the table. Maybe display the rotated image in the split view instead?
 
 ## Future Ideas
-- User Concept (Login, Azure AD to allow SSO?)
+- User Concept (Login, Azure AD, Keycloak)
 - Proper Database (Postgres or any existing SQL)
 - Storage upload (Cloud Blob Storage, Nextcloud with App User?)
 - Select model for batch on upload
@@ -33,22 +33,9 @@
 - Use OpenAI Batch API to reduce LLM costs (~50% for a max wait time of 24h)
 - Stats View
 - Test/Finetune Local OCR Model/LLM or train digit/letter recognizer?
-- Add automated tests
 - Should the results also be added into a different database?
-- Logging
 
 ## Questions
-- What age codes are there and what do they mean:
-  - N = 1
-  - NF = 1
-  - F = 2
-  - Fd = 3
-  - Fnd = 4
-  - Fv = 5
-  - Fnv = 6
-- Examples
-  - ad = 4
-  - dj = 3
 - What sex to pick in old scans there are sometimes more than 1 or ()
   - unknown (cross) = 0
   - male = 1
@@ -61,3 +48,9 @@
   - p ?
   - do these additional remarks carry some extra info?
 
+## Bugs Claude found
+- The review page handles only the last of several live updates that arrive together, so the open file sometimes doesn't refresh.
+- A failed delete or rename on a batch card shows no error to the user.
+- In the upload dialog you can rename a file to a name that's already in the list.
+- After a rename, the batch card keeps the old name if the batch is renamed again from another tab.
+- The upload preview never releases its blob URL, which leaks memory.

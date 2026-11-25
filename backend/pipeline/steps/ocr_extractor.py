@@ -82,8 +82,8 @@ class OcrExtractor(PipelineStep):
         atexit.register(self.close)  # safety net if close() is never called
 
     def close(self):
-        if getattr(self, "client", None):
-            self.client.close()
+        if client := getattr(self, "client", None):
+            client.close()
             self.client = None
         proc = getattr(self, "proc", None)
         if proc and proc.poll() is None:
@@ -98,8 +98,8 @@ class OcrExtractor(PipelineStep):
                 proc.kill()
                 proc.wait()
         self.proc = None
-        if getattr(self, "_log", None):
-            self._log.close()
+        if log_file := getattr(self, "_log", None):
+            log_file.close()
             self._log = None
 
     def _start_server(self):
@@ -207,6 +207,8 @@ class OcrExtractor(PipelineStep):
         return text
 
     def _ocr_image(self, img_file: Path) -> str:
+        if self.client is None:
+            raise RuntimeError("OcrExtractor.setup() was not called")
         b64 = base64.b64encode(img_file.read_bytes()).decode()
         resp = self.client.post(
             "/v1/chat/completions",

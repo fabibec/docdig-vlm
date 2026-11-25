@@ -37,8 +37,11 @@ class TableRow(BaseModel):
         "a shorter new prefix only overwrites the trailing part of the previous one."
     )
     species: str = Field(
-        description="Column 'Espèce'. Names mix German/Latin/French; do not normalize. "
-        "Use knowledge of birds in Switzerland to disambiguate handwriting; if unsure, return the "
+        description="Column 'Espèce'. Names mix German/Latin/French; keep the language as written. "
+        "Swiss-German dialect or short forms that are very close to the standard German name are "
+        "normalized to it (e.g. 'Rotkehli' -> 'Rotkehlchen', 'Zitröneler' -> 'Zitronenzeisig', "
+        "'Wintergoldhahn' -> 'Wintergoldhähnchen'); keep everything else as written, including "
+        "French and Latin names and other German names (e.g. 'Hausrötel' stays). Use knowledge of birds in Switzerland to disambiguate handwriting; if unsure, return the "
         "closest valid name and add an uncertainty. Ditto marks (II, ii, ll, 11, 1, \", '', dito, do.) "
         "-> repeat the species of the row above."
     )
@@ -57,7 +60,9 @@ class TableRow(BaseModel):
     )
     time: str = Field(
         description="Column 'Heure' as HH:MM; change only the format, not the digits "
-        "('1330' -> '13:30', '830' -> '08:30', '7' -> '07:00'). Empty cells carry over the time "
+        "('1330' -> '13:30', '830' -> '08:30', '7' -> '07:00'). Afternoon hours are sometimes written in "
+        "12-hour form: if an hour on the same date is smaller than the time above and adding 12 gives a valid "
+        "later time (e.g. '13' then '3' or '3.15'), add 12 hours ('3' -> '15:00', '3.15' -> '15:15'). Empty cells carry over the time "
         "from the row above until a new entry occurs."
     )
     wing_length_mm: str = Field(
@@ -87,6 +92,16 @@ class PageTable(BaseModel):
     )
 
 
+class CellFix(BaseModel):
+    """One cell the post-processing step changed after the LLM (not part of the LLM output)."""
+
+    row_number: int
+    column: str = Field(description="TableRow field name, e.g. 'species'.")
+    original: str = Field(description="Value as returned by the LLM, e.g. 'll'.")
+    value: str = Field(description="Value after post-processing.")
+    rule: str = Field(default="ditto", description="Which rule changed it.")
+
+
 class ExtractionResult(BaseModel):
     """PageTable plus the file it came from (added by this script, not by the LLM)."""
 
@@ -95,3 +110,4 @@ class ExtractionResult(BaseModel):
     input_tokens: int
     output_tokens: int
     estimated_cost: float
+    postprocessed: list[CellFix] = Field(default_factory=list, description="Cells changed by LlmPostprocessor.")

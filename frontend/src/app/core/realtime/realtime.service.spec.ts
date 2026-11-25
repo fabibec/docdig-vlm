@@ -58,7 +58,8 @@ describe('Realtime', () => {
 
   it('connects to /api/ws on the current host', () => {
     expect(FakeWebSocket.instances.length).toBe(1);
-    expect(last().url).toBe(`ws://${location.host}/api/ws`);
+    // Test page is http, so the service picks ws; it uses wss on https (realtime.service.ts).
+    expect(last().url).toBe(`ws://${location.host}/api/ws`); // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
   });
 
   it('tracks the connection state', () => {

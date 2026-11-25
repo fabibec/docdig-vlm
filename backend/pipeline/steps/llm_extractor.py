@@ -5,6 +5,7 @@ import io
 import logging
 import ssl
 import time
+from pathlib import Path
 
 import truststore
 from genai_prices import Usage, calc_price
@@ -17,6 +18,36 @@ from backend.pipeline.models.pipeline_parts import PipelineStep, PipelineTask, p
 from backend.pipeline.settings import settings
 
 log = logging.getLogger(__name__)
+
+
+def write_result(out_dir: Path, num: int, result: ExtractionResult) -> None:
+    """Write ``pNNN.json`` (the full result) plus ``pNNN.md`` and ``pNNN.csv`` (the rows) into ``out_dir``."""
+    stem = page_stem(num)
+    (out_dir / f"{stem}.json").write_text(result.model_dump_json(indent=2, ensure_ascii=False), encoding="utf-8")
+
+    rows = result.table.model_dump()["rows"]
+    (out_dir / f"{stem}.md").write_text(
+        tabulate(rows, headers="keys", tablefmt="pipe", disable_numparse=True),
+        encoding="utf-8",
+    )
+
+    buf = io.StringIO(newline="")
+    writer = csv.DictWriter(buf, fieldnames=list(TableRow.model_fields))  # header even for 0 rows
+    writer.writeheader()
+    writer.writerows(rows)
+    (out_dir / f"{stem}.csv").write_text(buf.getvalue(), encoding="utf-8", newline="")
+
+
+def estimate_cost(provider_id: str, model_ref: str, input_tokens: int, output_tokens: int, ctx=None) -> float:
+    """Price of one call in $ via genai-prices; 0.0 (with a warning) for models it doesn't know yet."""
+    try:
+        price = calc_price(
+            Usage(input_tokens=input_tokens, output_tokens=output_tokens), model_ref=model_ref, provider_id=provider_id
+        )
+    except LookupError:
+        log.warning("No price known for %s/%s, cost recorded as 0", provider_id, model_ref, extra=ctx or {})
+        return 0.0
+    return round(float(price.total_price), 6)
 
 
 class LlmRefusal(RuntimeError):
@@ -96,22 +127,18 @@ class LlmExtractor(PipelineStep):
             raise LlmRefusal(f"{image.name}: {msg.refusal or 'no parsed output'}")
 
         u = completion.usage
-        input_tokens = u.prompt_tokens
+        if u is None:
+            log.warning("LLM response for %s has no token usage, cost recorded as 0", image.name, extra=ctx)
+        input_tokens = u.prompt_tokens if u else 0
         # completion_tokens already includes reasoning tokens (completion_tokens_details is only a breakdown).
-        output_tokens = u.completion_tokens
-
-        price_data = calc_price(
-            Usage(input_tokens=input_tokens, output_tokens=output_tokens),
-            model_ref=self.model_ref,
-            provider_id=self.provider_id,
-        )
+        output_tokens = u.completion_tokens if u else 0
 
         return ExtractionResult(
             source=self.model,
             table=msg.parsed,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
-            estimated_cost=round(price_data.total_price, 6),
+            estimated_cost=estimate_cost(self.provider_id, self.model_ref, input_tokens, output_tokens, ctx),
         )
 
     async def _run_all(self, task: PipelineTask, nums: list[int]):
@@ -145,21 +172,7 @@ class LlmExtractor(PipelineStep):
                     "duration_ms": duration_ms,
                 },
             )
-            (out_dir / f"{page_stem(num)}.json").write_text(
-                result.model_dump_json(indent=2, ensure_ascii=False), encoding="utf-8"
-            )
-
-            rows = result.table.model_dump()["rows"]
-            (out_dir / f"{page_stem(num)}.md").write_text(
-                tabulate(rows, headers="keys", tablefmt="pipe", disable_numparse=True),
-                encoding="utf-8",
-            )
-
-            buf = io.StringIO(newline="")
-            writer = csv.DictWriter(buf, fieldnames=list(TableRow.model_fields))  # header even for 0 rows
-            writer.writeheader()
-            writer.writerows(rows)
-            (out_dir / f"{page_stem(num)}.csv").write_text(buf.getvalue(), encoding="utf-8", newline="")
+            write_result(out_dir, num, result)
 
             done += 1
             task.report(self.name, done, len(nums))

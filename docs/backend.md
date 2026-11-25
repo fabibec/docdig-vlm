@@ -10,6 +10,7 @@ Standalone, no web dependencies. `build_pipeline()` in `__init__.py` assembles t
 | `cropped` | `TableExtractor` | `raw/` | `cropped/pNNN.jpg`, `cropped/pNNN.geom.json`, `cropped/outlines/`, optional `cropped/grid/` |
 | `cropped` | `TableOrientationDetector` | `raw/`, `cropped/pNNN.geom.json` | rotates `raw/pNNN.jpg` upright and re-runs the table extraction (see below) |
 | `processed` | `LlmExtractor` | `cropped/` | `processed/pNNN.json` (`ExtractionResult`, incl. `estimated_cost`), `processed/pNNN.md`, `processed/pNNN.csv` |
+| `processed` | `LlmPostprocessor` | `processed/pNNN.json` | rewrites the three `processed/` files with ditto marks resolved (see below) |
 | `ocr` (optional) | `OcrExtractor` | `cropped/` | `ocr/pNNN.md`. Ovis OCR via a local `llama-server` (`lib/`, models in `models/`). |
 | `tesseract` (optional) | `TesseractExtractor` | `cropped/` | `tesseract/pNNN.md`. Experimental cell-by-cell OCR for the newer 74-box form. |
 
@@ -28,6 +29,19 @@ includes it):
 - Upside-down (180°): portrait crop with the wide column on the right, or the header in the lower half.
 - The corrected `raw/pNNN.jpg` is written back and the crop + geometry are regenerated, so later steps only
   ever see upright pages.
+
+**Post-processing** (`LlmPostprocessor`, step name `processed`, runs right after the LLM):
+- Ditto marks in the species and age columns that the LLM copied instead of resolving (`ll`, `II`, `"`, `u`,
+  `〃`, `dito`, `do.` …) are replaced by the nearest value above in the same column. `1` and `11` count only
+  in species (age codes can be digits). Other columns are left alone: there the marks can be real values
+  (weight `11`), and date/time are already carried over by the LLM.
+- Old age codes are converted: `dj` → `Fd`, `ad` → `Fnd` (any case, trailing dots ignored). The LLM schema
+  asks for this too; the step catches what the LLM missed.
+- The LLM carries date and time down into every row. In rows without a bird measured (no sex, age, wing or
+  weight, e.g. "Ring verloren" or empty rows) a date/time equal to the value above is cleared again. A
+  different value was written on the form and stays.
+- Every change is stored in `ExtractionResult.postprocessed` (row, column, original, new value, rule).
+  Running the step again changes nothing.
 
 **Geometry** (`PageGeometry`) is in pixels of the cropped image:
 - `header`: (y0, y1) of the header row
@@ -194,7 +208,7 @@ you add a column. Paths are stored relative to the artifact root.
 | `WEB_FRONTEND_DIR` | `frontend/dist/browser` | `/app/static` |
 | `WEB_POOL_SIZE` | `2` | |
 | `WEB_MAX_UPLOAD_MB` | `200` (per file) | |
-| `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL_NAME`, `LLM_REASONING_EFFORT`, `STEP_CONCURRENCY` | `.env` | env |
+| `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL_NAME`, `LLM_REASONING_EFFORT`, `LLM_SEED`, `LLM_PROMPT_FILE`, `STEP_CONCURRENCY` | `.env` (see `.env.example`) | env |
 | `LLM_PROMPT_FILE` | `data/prompts/llm_prompt.txt` | `/app/prompts/llm_prompt.txt` |
 | `OCR_*`, `LLAMA_CPP_*`, `MODEL_CACHE_DIR`, `HF_TOKEN` | see `backend/pipeline/settings.py` | not used (no OCR in the image) |
 | `LOG_LEVEL` | `INFO` (any case) | |
@@ -231,7 +245,7 @@ you add a column. Paths are stored relative to the artifact root.
 |---|---|
 | `tests/api/` | every route, flag rules, processing (`_persist`, `_fail`, re-queue), WebSocket events, DB migration. Each test gets its own SQLite file and artifact folder (`api` fixture); the process pool never starts. |
 | `tests/pipeline/` | image extraction, table extraction and orientation on synthetic forms and the sample scans, `Pipeline`/`collect_result`, the LLM step with a fake client, the CLI |
-| `tests/benchmark/` | the scoring functions and `evaluate` of `benchmark/run_benchmark.py` |
+| `tests/benchmark/` | the scoring rules, collecting raw cells and building the report (`benchmark/`) |
 | `tests/test_logging.py` | JSON format, rotation, settings, forwarding from a worker process |
 
 - `tests/conftest.py` sets a dummy `LLM_BASE_URL`/`LLM_API_KEY`, `LOG_FILE=` and a temporary

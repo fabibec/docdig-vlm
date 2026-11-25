@@ -27,7 +27,7 @@ variables:
   tags:
     - docker
 
-# ---------- test ----------
+# testing
 
 test:backend:
   stage: test
@@ -68,7 +68,7 @@ test:backend:
 
 test:frontend:
   stage: test
-  image: node:lts-trixie-slim
+  image: node:26.13.0-trixie-slim  # same as Dockerfile; >= 26.12.1 for CVE-2026-111497
   timeout: 30m
   variables:
     npm_config_cache: $CI_PROJECT_DIR/.cache/npm

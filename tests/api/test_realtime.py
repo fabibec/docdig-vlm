@@ -1,6 +1,8 @@
 """/api/health, /api/ws/schema and the /api/ws event stream."""
 
-from fastapi import FastAPI
+from typing import cast
+
+from fastapi import FastAPI, WebSocket
 from fastapi.testclient import TestClient
 
 from backend.api.app import _mount_frontend
@@ -67,7 +69,7 @@ def test_broadcast_drops_failing_clients(api):
             self.sent.append(data)
 
     ok, broken = Ok(), Broken()
-    hub.clients.update({ok, broken})
+    hub.clients.update(cast("set[WebSocket]", {ok, broken}))  # duck-typed fakes
     api.run(hub.broadcast, ReviewEvent(files_left=1, flags_left=2))
 
     assert hub.clients == {ok}

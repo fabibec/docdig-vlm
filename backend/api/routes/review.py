@@ -2,12 +2,12 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import selectinload
-from sqlmodel import select
+from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from backend.api.db import get_session
 from backend.api.enums import DocStatus
-from backend.api.models import Batch, Doc
+from backend.api.models import Batch, Doc, rel
 from backend.api.queries import get_doc, review_stats
 from backend.api.schemas import ReviewItem, ReviewQueue
 
@@ -26,9 +26,9 @@ async def review_queue(
     q = (
         select(Doc)
         .join(Batch)
-        .where(Doc.status == DocStatus.review, Batch.deleted_at.is_(None))
-        .options(selectinload(Doc.batch))
-        .order_by(Batch.created_at, Batch.id, Doc.filename)
+        .where(Doc.status == DocStatus.review, col(Batch.deleted_at).is_(None))
+        .options(selectinload(rel(Doc.batch)))
+        .order_by(col(Batch.created_at), col(Batch.id), col(Doc.filename))
     )
     batch_id = doc_id = None
     if doc:
@@ -38,7 +38,7 @@ async def review_queue(
         doc_id = d.id
         q = q.where(Doc.id == doc_id)
     elif batch:
-        b = (await session.exec(select(Batch).where(Batch.slug == batch, Batch.deleted_at.is_(None)))).first()
+        b = (await session.exec(select(Batch).where(Batch.slug == batch, col(Batch.deleted_at).is_(None)))).first()
         if not b:
             raise HTTPException(404, "batch not found")
         batch_id = b.id

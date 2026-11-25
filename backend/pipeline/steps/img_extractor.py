@@ -22,7 +22,7 @@ class ImgExtractor(PipelineStep):
         output_dir.mkdir(parents=True, exist_ok=True)
         pdf = task.input_pdf.name
 
-        total = pdfinfo_from_path(task.input_pdf)["Pages"]
+        total = pdfinfo_from_path(str(task.input_pdf))["Pages"]
         nums = [n for n in range(1, total + 1) if task.pages is None or n in task.pages]
 
         start = time.perf_counter()

@@ -30,6 +30,9 @@ dev = [
     "ruff>=0.17.0",
     "pytest>=8.0.0",
     "pytest-cov>=7.1.0",
+    "scikit-learn>=1.9.1",
+    "levenshtein>=0.27.5",
+    "matplotlib>=3.11.2",
 ]
 # Local OCR step, never part of the Docker image.
 ocr = [
@@ -40,6 +43,8 @@ ocr = [
 ]
 
 [tool.uv]
+# Supply-chain cooldown: ignore package versions published in the last 7 days.
+exclude-newer = "7 days"
 # Plain `uv sync` locally installs everything (as before); Docker uses `--no-default-groups`.
 default-groups = ["dev", "ocr"]
 
@@ -96,3 +101,7 @@ exclude_also = [
     "if __name__ == .__main__.:",
 ]
 
+
+[tool.ty.environment]
+# VS Code ty otherwise resolves imports against the system Python, not the uv venv.
+python = ".venv"

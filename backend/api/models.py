@@ -1,8 +1,10 @@
 """Database tables (SQLModel). The DB stores only paths relative to the artifact root."""
 
 from datetime import UTC, datetime
+from typing import Any, cast
 
 from sqlalchemy import JSON, Column, UniqueConstraint
+from sqlalchemy.orm import QueryableAttribute
 from sqlmodel import Field, Relationship, SQLModel
 
 from backend.api.enums import ColumnKey, DocStatus, FlagSource, Severity
@@ -88,3 +90,18 @@ class Flag(SQLModel, table=True):
     suggestion: str | None = None
     confidence: float | None = None
     resolved: bool = Field(default=False, index=True)
+
+
+def pk(obj: Batch | Doc | Page | Row | Flag) -> int:
+    """Primary key of a stored row. SQLModel types ``id`` as optional because it is unset before the first flush."""
+    if obj.id is None:
+        raise ValueError(f"{type(obj).__name__} has no id yet: flush the session first")
+    return obj.id
+
+
+def rel(attr: object) -> QueryableAttribute[Any]:
+    """A relationship for loader options (``selectinload(rel(Doc.batch))``).
+
+    SQLModel types ``Doc.batch`` as the related model, SQLAlchemy's loaders need the mapped attribute it really is.
+    """
+    return cast(QueryableAttribute[Any], attr)

@@ -16,7 +16,7 @@ from backend.pipeline import build_pipeline
 from backend.pipeline.models.pipeline_parts import DocResult, PipelineTask
 from backend.pipeline.models.results import PageGeometry
 from backend.pipeline.steps import LlmExtractor, TableExtractor, TableOrientationDetector
-from tests.pipeline.helpers import INPUT_DIR, col_widths, draw_form, requires_pdftoppm, write_pdf
+from tests.pipeline.helpers import INPUT_DIR, col_widths, draw_form, read_image, requires_pdftoppm, write_pdf
 
 LOGGER = "backend.pipeline.steps.table_orientation_detector"
 
@@ -115,9 +115,9 @@ def test_rotated_page_is_restored_upright(rotation, form, upright_geom, make_tas
         TableOrientationDetector().execute(task)
 
     assert any("Detected rotated table on page 1" in m for m in caplog.messages)
-    h, w = cv2.imread(str(task.step_dir("raw") / "p001.jpg")).shape[:2]
+    h, w = read_image(task.step_dir("raw") / "p001.jpg").shape[:2]
     assert h > w, "raw page is rewritten upright"
-    crop_h, crop_w = cv2.imread(str(task.step_dir("cropped") / "p001.jpg")).shape[:2]
+    crop_h, crop_w = read_image(task.step_dir("cropped") / "p001.jpg").shape[:2]
     post = read_geom(task)
     assert (crop_w, crop_h) == (post["width"], post["height"]), "crop is regenerated with the geometry"
     assert_same_table(post, upright_geom)
@@ -317,7 +317,7 @@ def test_header_in_lower_half_triggers_180_rotation(form, make_task, caplog):
     assert any("180° upside-down" in m for m in caplog.messages)
     extract.assert_called_once()
     assert extract.call_args.args[0] == raw
-    assert np.array_equal(cv2.imread(str(raw)).shape, form.shape)  # 180° keeps the portrait size
+    assert np.array_equal(read_image(raw).shape, form.shape)  # 180° keeps the portrait size
 
 
 # ---------------------------------------------------------------- real scans (need pdftoppm)
@@ -342,7 +342,7 @@ def test_real_scan_is_restored_upright(rotation, sample_scan, make_task):
     widths = col_widths(geom)
     assert widths.index(max(widths)) == 1
     assert abs(widths[1] - REAL_UPRIGHT["species_width"]) <= 3
-    h, w = cv2.imread(str(task.step_dir("raw") / "p001.jpg")).shape[:2]
+    h, w = read_image(task.step_dir("raw") / "p001.jpg").shape[:2]
     assert h > w
 
 
@@ -383,5 +383,5 @@ def test_real_rotated_pdf_without_header_is_restored_upright(tmp_path):
     geom = read_geom(task)
     assert geom["height"] > geom["width"]
     assert len(geom["row_bounds"]) == 74
-    h, w = cv2.imread(str(task.step_dir("raw") / "p001.jpg")).shape[:2]
+    h, w = read_image(task.step_dir("raw") / "p001.jpg").shape[:2]
     assert h > w

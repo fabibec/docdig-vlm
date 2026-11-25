@@ -41,7 +41,13 @@ def _settings(tmp_path: Path, **kw) -> LogSettings:
     return LogSettings(_env_file=None, file=tmp_path / "logs" / "docdig.log", **kw)
 
 
-def _lines(path: Path) -> list[dict]:
+def _log_file(s: LogSettings) -> Path:
+    assert s.file is not None, "file logging is disabled in these settings"
+    return s.file
+
+
+def _lines(path: Path | LogSettings) -> list[dict]:
+    path = _log_file(path) if isinstance(path, LogSettings) else path
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
 
 
@@ -127,7 +133,7 @@ def test_setup_writes_json_file(tmp_path):
     s = setup_logging(_settings(tmp_path, level="info"))
     logging.getLogger("backend.test").info("doc done", extra={"doc": "d-1", "page": 2})
     logging.getLogger("backend.test").debug("hidden")
-    (rec,) = _lines(s.file)
+    (rec,) = _lines(s)
     assert rec["msg"] == "doc done" and rec["doc"] == "d-1" and rec["page"] == 2
 
 
@@ -141,20 +147,20 @@ def test_setup_is_idempotent(tmp_path):
     ours = [h for h in root.handlers if getattr(h, "_docdig_handler", False)]
     assert len(root.handlers) == after_first and len(ours) == 2  # console + file, once
     logging.getLogger("backend.test").warning("once")
-    assert len(_lines(s.file)) == 1
+    assert len(_lines(s)) == 1
 
 
 def test_libs_level_quiets_noisy_loggers(tmp_path):
     s = setup_logging(_settings(tmp_path, level="DEBUG", libs_level="ERROR"))
     logging.getLogger("httpx").warning("noise")
     logging.getLogger("backend.test").debug("mine")
-    assert [r["msg"] for r in _lines(s.file)] == ["mine"]
+    assert [r["msg"] for r in _lines(s)] == ["mine"]
 
 
 def test_text_file_format(tmp_path):
     s = setup_logging(_settings(tmp_path, file_format="text"))
     logging.getLogger("backend.test").warning("plain", extra={"doc": "d-1"})
-    text = s.file.read_text(encoding="utf-8")
+    text = _log_file(s).read_text(encoding="utf-8")
     assert "backend.test: plain doc=d-1" in text and not text.startswith("{")
 
 
@@ -163,9 +169,9 @@ def test_rotation(tmp_path):
     log = logging.getLogger("backend.test")
     for i in range(50):
         log.warning("line %d %s", i, "x" * 50)
-    files = sorted(p.name for p in s.file.parent.iterdir())
+    files = sorted(p.name for p in _log_file(s).parent.iterdir())
     assert files == ["docdig.log", "docdig.log.1", "docdig.log.2"]
-    for p in s.file.parent.iterdir():
+    for p in _log_file(s).parent.iterdir():
         _lines(p)  # every rotated file is still valid JSON lines
 
 
@@ -195,7 +201,7 @@ def test_queue_forwarding_from_spawned_process(tmp_path):
     finally:
         listener.stop()
 
-    recs = [r for r in _lines(s.file) if r["logger"] == "backend.child"]
+    recs = [r for r in _lines(s) if r["logger"] == "backend.child"]
     assert [r["msg"] for r in recs] == ["from child", "child failed"]
     first, failed = recs
     assert first["process"] == "SpawnProcess-test" and first["doc"] == "d-9"

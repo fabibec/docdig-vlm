@@ -1,5 +1,7 @@
 """Extraction pipeline: PDF -> page images (raw) -> table crops (cropped) -> LLM tables (processed).
 
+The LLM table is post-processed (ditto marks resolved) as part of the `processed` step.
+
 Standalone: no dependency on the web app. Entry points:
     uv run python -m backend.pipeline --help   (CLI)
     uv run python -m backend.main              (playground: data/input -> data/output)
@@ -13,7 +15,13 @@ STEP_NAMES = ["raw", "cropped", "processed"]
 
 def build_pipeline(draw_rows: bool = False, ocr: bool = False, tesseract: bool = False) -> Pipeline:
     """The default pipeline. Call ``.setup()`` before running it."""
-    from backend.pipeline.steps import ImgExtractor, LlmExtractor, TableExtractor, TableOrientationDetector
+    from backend.pipeline.steps import (
+        ImgExtractor,
+        LlmExtractor,
+        LlmPostprocessor,
+        TableExtractor,
+        TableOrientationDetector,
+    )
 
     pipeline = (
         Pipeline()
@@ -30,7 +38,7 @@ def build_pipeline(draw_rows: bool = False, ocr: bool = False, tesseract: bool =
 
         pipeline.add_step(TesseractExtractor())
     if not ocr and not tesseract:
-        pipeline.add_step(LlmExtractor())
+        pipeline.add_step(LlmExtractor()).add_step(LlmPostprocessor())
     return pipeline
 
 

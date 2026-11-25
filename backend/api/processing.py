@@ -15,6 +15,8 @@ import traceback
 from concurrent.futures import ProcessPoolExecutor
 from datetime import UTC, datetime
 from logging.handlers import QueueListener
+from multiprocessing.queues import Queue
+from typing import Any
 
 from sqlmodel import col, delete, select, update
 
@@ -24,7 +26,7 @@ from backend.api.db import SessionLocal
 from backend.api.enums import ArtifactState, DocStatus
 from backend.api.flags import make_flags, row_values
 from backend.api.hub import hub
-from backend.api.models import Doc, Flag, Page, Row
+from backend.api.models import Doc, Flag, Page, Row, pk
 from backend.api.queries import doc_events, load_doc
 from backend.api.schemas import Progress
 from backend.api.storage import store
@@ -39,8 +41,9 @@ class Processor:
         self.pool_size = pool_size
         self._ctx = mp.get_context("spawn")  # never fork a process that runs an event loop
         self._pool: ProcessPoolExecutor | None = None
-        self._queue = None
+        self._queue: Queue | None = None
         self._log_listener: QueueListener | None = None
+        self._log_queue: Any = None
         self._reader: threading.Thread | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._slots = asyncio.Semaphore(pool_size)
@@ -51,15 +54,17 @@ class Processor:
     async def start(self) -> None:
         self._loop = asyncio.get_running_loop()
         self._queue = self._ctx.Queue()
-        log_queue, self._log_listener = start_queue_listener(self._ctx)  # workers log via the main process
+        self._log_queue, self._log_listener = start_queue_listener(self._ctx)  # workers log via the main process
         log_cfg = current_settings()
         self._pool = ProcessPoolExecutor(
             max_workers=self.pool_size,
             mp_context=self._ctx,
             initializer=worker.init_worker,
-            initargs=(self._queue, log_queue, log_cfg.level, log_cfg.libs_level),
+            initargs=(self._queue, self._log_queue, log_cfg.level, log_cfg.libs_level),
         )
-        self._reader = threading.Thread(target=self._read_progress, name="progress-reader", daemon=True)
+        self._reader = threading.Thread(
+            target=self._read_progress, args=(self._queue, self._loop), name="progress-reader", daemon=True
+        )
         self._reader.start()
 
         async with SessionLocal() as session:  # recover after a crash/restart
@@ -67,8 +72,10 @@ class Processor:
                 update(Doc).where(col(Doc.status) == DocStatus.processing).values(status=DocStatus.queued)
             )
             await session.commit()
-            queued = (await session.exec(select(Doc.id).where(Doc.status == DocStatus.queued).order_by(Doc.id))).all()
-        self.enqueue(list(queued))
+            queued = (
+                await session.exec(select(Doc.id).where(Doc.status == DocStatus.queued).order_by(col(Doc.id)))
+            ).all()
+        self.enqueue([i for i in queued if i is not None])
 
     async def stop(self) -> None:
         for t in self._tasks:
@@ -81,7 +88,9 @@ class Processor:
             # Workers may still log while they finish the current doc: stop the listener only after they exit.
             # (A daemon thread; if the interpreter ends first, the pool's own exit hook has joined the workers.)
             children, listener, self._log_listener = mp.active_children(), self._log_listener, None
-            threading.Thread(target=_stop_log_listener, args=(children, listener), name="log-stop", daemon=True).start()
+            threading.Thread(
+                target=_stop_log_listener, args=(children, listener, self._log_queue), name="log-stop", daemon=True
+            ).start()
 
     # ---------- jobs ----------
 
@@ -106,7 +115,7 @@ class Processor:
             log.info("doc %s started (%s)", doc.slug, doc.filename, extra=ctx)
             t0 = time.perf_counter()
             try:
-                result_json = await self._loop.run_in_executor(
+                result_json = await asyncio.get_running_loop().run_in_executor(
                     self._pool, worker.run_doc, doc_id, str(input_pdf), str(out_dir)
                 )
                 doc = await self._persist(doc_id, DocResult.model_validate_json(result_json))
@@ -163,7 +172,7 @@ class Processor:
                 await session.flush()
                 for r in pr.table.rows:
                     y0, y1 = g.row_bounds[r.row_number - 1] if 0 < r.row_number <= len(g.row_bounds) else (0, 0)
-                    session.add(Row(page_id=page.id, idx=r.row_number, y0=y0, y1=y1, values=row_values(r)))
+                    session.add(Row(page_id=pk(page), idx=r.row_number, y0=y0, y1=y1, values=row_values(r)))
                 for f in make_flags(pr):
                     session.add(Flag(doc_id=doc_id, page_num=pr.num, **f))
                     n_flags += 1
@@ -193,10 +202,10 @@ class Processor:
 
     # ---------- progress ----------
 
-    def _read_progress(self) -> None:
+    def _read_progress(self, queue: Queue, loop: asyncio.AbstractEventLoop) -> None:
         """Thread: block on the mp queue and forward to the event loop."""
-        while (item := self._queue.get()) is not None:
-            asyncio.run_coroutine_threadsafe(self._on_progress(*item), self._loop)
+        while (item := queue.get()) is not None:
+            asyncio.run_coroutine_threadsafe(self._on_progress(*item), loop)
 
     async def _on_progress(self, doc_id: int, step: str, page: int, pages: int) -> None:
         async with SessionLocal() as session:
@@ -208,11 +217,11 @@ class Processor:
         await hub.broadcast(events[0])  # only the DocEvent; counts don't change mid-run
 
 
-def _stop_log_listener(children: list, listener: QueueListener) -> None:
+def _stop_log_listener(children: list, listener: QueueListener, queue: Any) -> None:
     for p in children:
         p.join()
     listener.stop()
-    listener.queue.close()
+    queue.close()
 
 
 processor = Processor(settings.pool_size)

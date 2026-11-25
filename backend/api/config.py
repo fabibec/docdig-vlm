@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from backend.pipeline.directories import DATA_DIR, PROJECT_ROOT
@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=PROJECT_ROOT / ".env", env_prefix="WEB_", extra="ignore")
 
     data_dir: Path = DATA_DIR
-    db_path: Path | None = None  # default: <data_dir>/state/app.db
+    db_path: Path = Field(default_factory=lambda d: d["data_dir"] / "state" / "app.db")
     frontend_dir: Path = PROJECT_ROOT / "frontend" / "dist" / "browser"
     pool_size: int = 2  # parallel documents (processes)
     max_upload_mb: int = 200  # per file
@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _resolve(self):
         self.data_dir = self.data_dir.resolve()
-        self.db_path = (self.db_path or self.data_dir / "state" / "app.db").resolve()
+        self.db_path = self.db_path.resolve()
         return self
 
     @property

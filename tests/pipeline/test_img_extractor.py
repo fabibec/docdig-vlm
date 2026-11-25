@@ -1,12 +1,11 @@
 """ImgExtractor: PDF pages -> raw/pNNN.jpg (needs pdftoppm)."""
 
-import cv2
 import numpy as np
 import pytest
 
 from backend.pipeline.models.pipeline_parts import PipelineTask
 from backend.pipeline.steps import ImgExtractor
-from tests.pipeline.helpers import requires_pdftoppm, write_pdf
+from tests.pipeline.helpers import read_image, requires_pdftoppm, write_pdf
 
 pytestmark = requires_pdftoppm
 
@@ -31,8 +30,8 @@ def test_every_page_is_rendered_as_jpg(two_page_pdf, tmp_path):
     assert task.page_nums("raw") == [1, 2]
     assert calls == [("raw", 1, 2), ("raw", 2, 2)]
     # rendered at the step DPI (200), same as the PDF resolution -> pixel sizes round-trip
-    assert cv2.imread(str(raw / "p001.jpg")).shape[:2] == (600, 400)
-    p2 = cv2.imread(str(raw / "p002.jpg"))
+    assert read_image(raw / "p001.jpg").shape[:2] == (600, 400)
+    p2 = read_image(raw / "p002.jpg")
     assert p2.shape[:2] == (300, 500)
     assert p2.mean() < 30  # the dark page stays dark
 
@@ -50,7 +49,7 @@ def test_dpi_scales_the_rendered_page(two_page_pdf, tmp_path):
 
     ImgExtractor(dpi=100).execute(task)
 
-    assert cv2.imread(str(task.step_dir("raw") / "p001.jpg")).shape[:2] == (300, 200)
+    assert read_image(task.step_dir("raw") / "p001.jpg").shape[:2] == (300, 200)
 
 
 def test_page_filter_outside_document_writes_nothing(two_page_pdf, tmp_path):

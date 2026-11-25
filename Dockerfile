@@ -2,7 +2,8 @@
 # DocDig: one image, Angular SPA embedded in the FastAPI app, all state on the /data volume.
 
 # ---------- 1) frontend build ----------
-FROM node:lts-trixie-slim AS web
+# Pinned: Node >= 26.12.1 fixes the Brotli RCE (CVE-2026-111497). Keep in sync with test:frontend in CI.
+FROM node:26.13.0-trixie-slim AS web
 WORKDIR /web
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --no-audit --no-fund

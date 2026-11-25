@@ -10,7 +10,8 @@ import pytest
 from PIL import Image
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-SAMPLE_PDF = PROJECT_ROOT / "data" / "dataset" / "pdfs" / "scan_1972_sample.pdf"
+# Pages 1-2 are the former scan_1972_sample.pdf.
+SAMPLE_PDF = PROJECT_ROOT / "data" / "dataset" / "pdfs" / "scan_1972_CdB_1_20231125160539.pdf"
 INPUT_DIR = PROJECT_ROOT / "data" / "input"
 
 HAS_PDFTOPPM = shutil.which("pdftoppm") is not None
@@ -57,3 +58,10 @@ def write_pdf(path: Path, pages: list[np.ndarray], dpi: int = 200) -> Path:
 def col_widths(geom: dict) -> list[int]:
     bounds = geom["col_bounds"]
     return [b - a for a, b in pairwise(bounds)]
+
+
+def read_image(path: Path) -> np.ndarray:
+    """``cv2.imread`` that fails loudly instead of returning None for a missing or broken file."""
+    img = cv2.imread(str(path))
+    assert img is not None, f"cannot read image {path}"
+    return img

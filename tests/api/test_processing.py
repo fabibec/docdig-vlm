@@ -220,11 +220,13 @@ def test_start_requeues_processing_and_queued_docs(api, factory, monkeypatch):
     monkeypatch.setattr(fresh, "enqueue", enqueued.append)
     api.run(fresh.start)
     api.run(fresh.stop)
-    fresh._reader.join(timeout=5)
+    reader = fresh._reader
+    assert reader is not None
+    reader.join(timeout=5)
 
     assert enqueued == [[queued.id, running.id]]
     assert factory.get(Doc, running.id).status is DocStatus.queued
-    assert not fresh._reader.is_alive()
+    assert not reader.is_alive()
 
 
 # ---------- pipeline result -> DocResult ----------

@@ -5,11 +5,11 @@ from datetime import UTC, datetime
 
 from sqlalchemy import func
 from sqlalchemy.orm import selectinload
-from sqlmodel import select
+from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from backend.api.enums import DocStatus
-from backend.api.models import Batch, Doc, Flag
+from backend.api.models import Batch, Doc, Flag, pk, rel
 from backend.api.schemas import (
     BatchEvent,
     BatchOut,
@@ -43,14 +43,14 @@ def doc_out(doc: Doc) -> DocOut:
 
 
 async def batch_outs(session: AsyncSession, batches: list[Batch]) -> list[BatchOut]:
-    ids = [b.id for b in batches]
+    ids = [pk(b) for b in batches]
     counts: dict[int, StatusCounts] = {i: StatusCounts() for i in ids}
     flags: dict[int, int] = dict.fromkeys(ids, 0)
     rows = await session.exec(
         select(Doc.batch_id, Doc.status, func.count(), func.sum(Doc.open_flags))
         .join(Batch)
-        .where(Doc.batch_id.in_(ids), Batch.deleted_at.is_(None))
-        .group_by(Doc.batch_id, Doc.status)
+        .where(col(Doc.batch_id).in_(ids), col(Batch.deleted_at).is_(None))
+        .group_by(col(Doc.batch_id), col(Doc.status))
     )
     for batch_id, status, n, open_flags in rows:
         setattr(counts[batch_id], DocStatus(status).value, n)
@@ -60,20 +60,20 @@ async def batch_outs(session: AsyncSession, batches: list[Batch]) -> list[BatchO
             slug=b.slug,
             name=b.name,
             created_at=utc(b.created_at),
-            num_docs=sum(counts[b.id].model_dump().values()),
-            counts=counts[b.id],
-            open_flags=flags[b.id],
+            num_docs=sum(counts[pk(b)].model_dump().values()),
+            counts=counts[pk(b)],
+            open_flags=flags[pk(b)],
         )
         for b in batches
     ]
 
 
 async def get_doc(session: AsyncSession, slug: str) -> Doc | None:
-    return (await session.exec(select(Doc).where(Doc.slug == slug).options(selectinload(Doc.batch)))).first()
+    return (await session.exec(select(Doc).where(Doc.slug == slug).options(selectinload(rel(Doc.batch))))).first()
 
 
 async def load_doc(session: AsyncSession, doc_id: int) -> Doc:
-    return (await session.exec(select(Doc).where(Doc.id == doc_id).options(selectinload(Doc.batch)))).one()
+    return (await session.exec(select(Doc).where(Doc.id == doc_id).options(selectinload(rel(Doc.batch))))).one()
 
 
 async def review_stats(session: AsyncSession, batch_id: int | None = None, doc_id: int | None = None):
@@ -81,7 +81,7 @@ async def review_stats(session: AsyncSession, batch_id: int | None = None, doc_i
         select(func.count(), func.coalesce(func.sum(Doc.open_flags), 0))
         .select_from(Doc)
         .join(Batch)
-        .where(Doc.status == DocStatus.review, Batch.deleted_at.is_(None))
+        .where(Doc.status == DocStatus.review, col(Batch.deleted_at).is_(None))
     )
     if batch_id is not None:
         q = q.where(Doc.batch_id == batch_id)

@@ -7,7 +7,7 @@ PDF → page images → table crop + row geometry (+ orientation fix) → LLM ta
 backend/pipeline   standalone extraction pipeline (CLI, no web dependencies)
 backend/api        FastAPI app: upload, process pool, review API, WebSocket, serves the SPA
 frontend           Angular SPA
-benchmark          scores pipeline output against hand-made reference CSVs
+benchmark          runs models and scores them against hand-made reference CSVs
 tests              pytest suite (pipeline + API)
 data/prompts       LLM prompt (llm_prompt.txt)
 data/dataset       benchmark ground truth: pdfs/ + output/<pdf>_pNNN.csv
@@ -44,22 +44,45 @@ uv run python -m backend.pipeline run data/input/scan.pdf --steps cropped,tesser
 |---|---|
 | `raw` | page images `raw/pNNN.jpg` |
 | `cropped` | table crop `cropped/pNNN.jpg` + geometry `pNNN.geom.json`; sideways/upside-down pages are rotated upright first |
-| `processed` | LLM result `processed/pNNN.json`, `.md` and `.csv` |
+| `processed` | LLM result `processed/pNNN.json`, `.md` and `.csv`; then species/age ditto marks (`ll`, `"`) resolved age `dj`/`ad` → `Fd`/`Fnd`, date/time cleared in rows without a bird |
 | `ocr` / `tesseract` | optional local OCR experiments (replace `processed`) |
 
 Each step reads the previous step's output from disk. `--draw-rows` writes `cropped/grid/pNNN.jpg`.
 
 ## Benchmark
 
-Compares `processed/pNNN.csv` against the reference tables in `data/dataset/output/`:
+Compares LLM tables against the reference tables in `data/dataset/output/`. `run` calls the LLM (paid) and
+stores raw cells, `report` scores them and can be re-run any time:
 
 ```bash
-uv run -m benchmark.run_benchmark --refs scan_1972_sample_p001 --model openai/gpt-6-luna:low
-uv run -m benchmark.run_benchmark --run luna=data/output          # score existing outputs only
+uv run -m benchmark run --model openai/gpt-6-luna:low --model anthropic/claude-haiku-5.5:low   # all pages
+uv run -m benchmark run --refs scan_1972_CdB_1_20231125160539_p002 --model openai/gpt-6-luna:low
+uv run -m benchmark run --run luna=data/output                     # existing outputs, no LLM calls
+uv run -m benchmark report benchmark/results/<ts> --model luna --cells
 ```
 
-Results (report, per-cell diffs, errors) land in `benchmark/results/<timestamp>/`. See the docstring of
-[benchmark/run_benchmark.py](benchmark/run_benchmark.py) for all options.
+Every `run` gets its own folder `benchmark/results/<timestamp>/` with the report on top (`report.md`, summary
+and per-column CSVs, `columns.png`) and one folder per model, `<provider>/<model>/<effort>/`:
+
+- `diff/<page>.md`: the whole page with every cell marked ✅ correct, ⚠️ partial, ❌ wrong (predicted →
+  reference), 🚩 flagged by the LLM (✅🚩 = false alarm), 🔁 resolved from a ditto mark (species, age)
+- `cells.csv` (reference vs. prediction per cell) and `pages.csv` (cost and tokens per page), the raw data
+  `report` scores
+- `<pdf>/processed/`: the LLM output
+
+The report has a summary (score, flag-adjusted score, flag precision / recall / F2, errors and cost per 100
+pages, cost per 100 correct cells), errors per column and, with `--cells`, the cells every run gets wrong
+(`hard_cells.csv`, `cells.png`), which are often labelling errors. To compare runs, pass several folders to
+`report`.
+
+Scoring rules: rows are matched by position. Ring numbers are scored per character, and a misread that
+repeats on a page (A5… instead of A9… on every row) is counted fully only once. Species and remarks get
+partial credit by Levenshtein distance, species count 3×. All other columns must match exactly. A flagged
+wrong cell gets 50 % of its error back, a flagged correct cell loses 25 %. See
+[benchmark/scoring.py](benchmark/scoring.py).
+
+Prices come from `genai-prices`. A model it doesn't know yet is recorded with cost 0 (with a warning); add its
+price to [benchmark/prices.py](benchmark/prices.py) and re-run `report` to get the cost columns right.
 
 ## Web app (dev)
 

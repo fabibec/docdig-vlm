@@ -10,7 +10,7 @@ import pytest
 from backend.pipeline.models.results import PageGeometry
 from backend.pipeline.steps import TableExtractor
 from backend.pipeline.steps.table_extractor import NoTableFound
-from tests.pipeline.helpers import FORM_COL_WIDTHS, draw_form
+from tests.pipeline.helpers import FORM_COL_WIDTHS, draw_form, read_image
 
 TOL = 5  # px: line centres are averaged over a few pixels of (dilated) line thickness
 
@@ -52,7 +52,7 @@ def test_writes_crop_geometry_and_outline(form_page, tmp_path):
 
     geom = TableExtractor.extract_printed_table(img_path, out)
 
-    crop = cv2.imread(str(out / "p001.jpg"))
+    crop = read_image(out / "p001.jpg")
     assert crop.shape[:2] == (geom.height, geom.width)
     on_disk = PageGeometry.model_validate_json((out / "p001.geom.json").read_text(encoding="utf-8"))
     assert on_disk == geom

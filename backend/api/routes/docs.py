@@ -12,7 +12,7 @@ from tabulate import tabulate
 from backend.api.db import get_session
 from backend.api.enums import COLUMN_GRID_SPAN, COLUMNS, ArtifactState, ColumnKey, DocStatus, FlagSource
 from backend.api.hub import hub
-from backend.api.models import Doc, Flag, Page, Row
+from backend.api.models import Doc, Flag, Page, Row, pk
 from backend.api.queries import batch_outs, doc_events, doc_out, get_doc, refresh_doc_flags
 from backend.api.schemas import (
     BatchEvent,
@@ -51,7 +51,7 @@ async def _page(session: AsyncSession, doc: Doc, num: int) -> Page | None:
 
 
 async def _rows(session: AsyncSession, page: Page) -> list[Row]:
-    return list((await session.exec(select(Row).where(Row.page_id == page.id).order_by(Row.idx))).all())
+    return list((await session.exec(select(Row).where(Row.page_id == page.id).order_by(col(Row.idx)))).all())
 
 
 def _column_x(page: Page) -> dict[ColumnKey, tuple[int, int]]:
@@ -79,7 +79,7 @@ def _n_changed(before: dict[str, str], after: dict[str, str]) -> int:
 
 def _flag_out(f: Flag) -> FlagOut:
     return FlagOut(
-        id=f.id,
+        id=pk(f),
         page=f.page_num,
         row=f.row_idx,
         column=f.column,
@@ -98,14 +98,14 @@ def _flag_out(f: Flag) -> FlagOut:
 async def get_doc_detail(slug: str, session: AsyncSession = Depends(get_session)):
     doc = await _doc(session, slug)
     nums = (
-        await session.exec(select(Page.num, Page.page_confidence).where(Page.doc_id == doc.id).order_by(Page.num))
+        await session.exec(select(Page.num, Page.page_confidence).where(Page.doc_id == doc.id).order_by(col(Page.num)))
     ).all()
     open_by_page = dict(
         (
             await session.exec(
                 select(Flag.page_num, func.count())
                 .where(Flag.doc_id == doc.id, Flag.resolved == False)
-                .group_by(Flag.page_num)
+                .group_by(col(Flag.page_num))
             )
         ).all()
     )
@@ -130,7 +130,7 @@ async def list_flags(
     q = select(Flag).where(Flag.doc_id == doc.id)
     if open is not None:
         q = q.where(Flag.resolved == (not open))
-    flags = (await session.exec(q.order_by(Flag.page_num, Flag.row_idx, Flag.id))).all()
+    flags = (await session.exec(q.order_by(col(Flag.page_num), col(Flag.row_idx), col(Flag.id)))).all()
     return [_flag_out(f) for f in flags]
 
 
@@ -155,7 +155,7 @@ async def resolve_row(slug: str, num: int, idx: int, body: RowUpdate, session: A
     """Save a record and resolve all open flags of that row."""
     doc = await _doc(session, slug)
     page = await _page(session, doc, num)
-    row = page and (await session.exec(select(Row).where(Row.page_id == page.id, Row.idx == idx))).first()
+    row = (await session.exec(select(Row).where(Row.page_id == page.id, Row.idx == idx))).first() if page else None
     if not row:
         log.warning(
             "resolve rejected: row %d on page %d of %s not found",
@@ -198,7 +198,7 @@ async def resolve_row(slug: str, num: int, idx: int, body: RowUpdate, session: A
 
     await hub.broadcast(*await doc_events(session, doc))
     await store.after_review(doc.rel_dir)
-    return ResolveOut(doc=doc_out(doc), resolved_flag_ids=[f.id for f in flags])
+    return ResolveOut(doc=doc_out(doc), resolved_flag_ids=[pk(f) for f in flags])
 
 
 @router.post("/{slug}/page/{num}/resolve", response_model=ResolveOut)
@@ -260,7 +260,7 @@ async def resolve_page(slug: str, num: int, body: PageUpdate, session: AsyncSess
 
     await hub.broadcast(*await doc_events(session, doc))
     await store.after_review(doc.rel_dir)
-    return ResolveOut(doc=doc_out(doc), resolved_flag_ids=[f.id for f in flags])
+    return ResolveOut(doc=doc_out(doc), resolved_flag_ids=[pk(f) for f in flags])
 
 
 # ---------- reviewer annotations + undo ----------
@@ -286,12 +286,12 @@ async def create_flag(slug: str, body: FlagCreate, session: AsyncSession = Depen
         log.warning("note rejected: %s is %s, not processed yet", slug, doc.status, extra=ctx)
         raise HTTPException(409, "doc is not processed yet")
     page = await _page(session, doc, body.page)
-    row = page and (await session.exec(select(Row).where(Row.page_id == page.id, Row.idx == body.row))).first()
+    row = (await session.exec(select(Row).where(Row.page_id == page.id, Row.idx == body.row))).first() if page else None
     if not row:
         log.warning("note rejected: row %d on page %d of %s not found", body.row, body.page, slug, extra=ctx)
         raise HTTPException(404, "row not found")
     flag = Flag(
-        doc_id=doc.id,
+        doc_id=pk(doc),
         page_num=body.page,
         row_idx=body.row,
         column=body.column,

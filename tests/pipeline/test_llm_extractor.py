@@ -15,10 +15,10 @@ from backend.pipeline.models.pipeline_parts import collect_result, page_stem
 from backend.pipeline.models.results import PageGeometry
 from backend.pipeline.steps import LlmExtractor
 from backend.pipeline.steps.llm_extractor import LlmRefusal
-from benchmark import run_benchmark as rb
+from benchmark.scoring import COLUMNS as BENCH_COLUMNS
 
 # The CSV the benchmark reads: row_number + the benchmark columns, by name.
-COLUMNS = ["row_number", *rb.COLUMNS]
+COLUMNS = ["row_number", *BENCH_COLUMNS]
 
 
 def table(n_rows: int = 2) -> PageTable:
@@ -249,6 +249,17 @@ def test_llm_extraction_builds_request_and_prices_tokens(extractor, cropped_task
     expected = calc_price(Usage(input_tokens=1000, output_tokens=400), model_ref="gpt-4o", provider_id="openai")
     assert result.estimated_cost == pytest.approx(float(expected.total_price))
     assert result.estimated_cost > 0
+
+
+def test_unknown_model_costs_zero_instead_of_failing(extractor, cropped_task, monkeypatch):
+    use_fake_client(extractor, monkeypatch, completion(parsed=table()))
+    monkeypatch.setattr(extractor, "model_ref", "model-genai-prices-does-not-know")
+    image = cropped_task.step_dir("cropped") / "p001.jpg"
+
+    result = extractor.runner.run(extractor._llm_extraction(image))
+
+    assert result.estimated_cost == 0.0
+    assert result.table == table()
 
 
 @pytest.mark.parametrize(

@@ -6,14 +6,14 @@ from pathlib import PurePath
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import func
-from sqlmodel import select
+from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from backend.api.auth import User, current_user
 from backend.api.config import settings
 from backend.api.db import get_session
 from backend.api.hub import hub
-from backend.api.models import Batch, Doc
+from backend.api.models import Batch, Doc, pk
 from backend.api.processing import processor
 from backend.api.queries import batch_outs, doc_out, review_stats
 from backend.api.schemas import BatchEvent, BatchOut, BatchUpdate, DocOut, DuplicateFiles, Paginated, ReviewEvent
@@ -28,7 +28,7 @@ PageSize = Query(10, ge=1, le=100)
 
 
 async def _batch(session: AsyncSession, slug: str) -> Batch:
-    batch = (await session.exec(select(Batch).where(Batch.slug == slug, Batch.deleted_at.is_(None)))).first()
+    batch = (await session.exec(select(Batch).where(Batch.slug == slug, col(Batch.deleted_at).is_(None)))).first()
     if not batch:
         log.debug("batch %s not found", slug, extra={"batch": slug})
         raise HTTPException(404, "batch not found")
@@ -66,6 +66,7 @@ async def create_batch(
     slug = await _unique_slug(session, Batch, f"{date.today():%Y%m%d}-{slugify(name) or 'batch'}")
     batch = Batch(slug=slug, name=name.strip(), owner=user.name)
     session.add(batch)
+    await session.flush()  # assigns batch.id; rolled back with the rest on failure
 
     used: set[str] = set()
     docs: list[Doc] = []
@@ -76,7 +77,7 @@ async def create_batch(
             n += 1
             doc_slug = f"{base}-{n}"
         used.add(doc_slug)
-        docs.append(Doc(slug=doc_slug, filename=fname, batch=batch))
+        docs.append(Doc(slug=doc_slug, filename=fname, batch_id=pk(batch), batch=batch))
     session.add_all(docs)
 
     by_name = {PurePath(f.filename or "").name: f for f in files}
@@ -100,7 +101,7 @@ async def create_batch(
 
     for doc in docs:
         await store.after_upload(f"{slug}/{doc.slug}")
-    processor.enqueue([d.id for d in docs])
+    processor.enqueue([pk(d) for d in docs])
     log.info(
         "created batch %s (%r) with %d files, %.2f MB, owner %s",
         slug,
@@ -121,12 +122,12 @@ async def create_batch(
 
 @router.get("", response_model=Paginated[BatchOut])
 async def list_batches(page: int = PageNum, size: int = PageSize, session: AsyncSession = Depends(get_session)):
-    total = (await session.exec(select(func.count()).select_from(Batch).where(Batch.deleted_at.is_(None)))).one()
+    total = (await session.exec(select(func.count()).select_from(Batch).where(col(Batch.deleted_at).is_(None)))).one()
     batches = (
         await session.exec(
             select(Batch)
-            .where(Batch.deleted_at.is_(None))
-            .order_by(Batch.created_at.desc(), Batch.id.desc())
+            .where(col(Batch.deleted_at).is_(None))
+            .order_by(col(Batch.created_at).desc(), col(Batch.id).desc())
             .offset((page - 1) * size)
             .limit(size)
         )

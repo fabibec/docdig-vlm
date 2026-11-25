@@ -7,6 +7,7 @@ Return the table with the response schema you were given; column-specific rules 
 Rules:
 - Copy what is written, except for the normalizations listed in the field descriptions and below (these are mandatory). Do not invent values. Empty cells stay "".
 - Sex column: NEVER output the symbols ♂, ♀ or ×. Always convert ♂ -> m, ♀ -> f, × -> X, keeping brackets and order (e.g. "(♀)" -> "(f)", "♂♀" -> "mf"). Output only m, f, X, brackets, or "".
+- Afternoon hours may be written in 12-hour form: if an hour is smaller than the time above on the same date and adding 12 gives a valid later time, add 12 (after "13", "3" means 15:00). See the time field description.
 - Ignore crossed-out text.
 - Every printed data row must appear in `rows`, in the same order, even if it is empty.
 - Any cell you cannot read with confidence: add an uncertainty. Also report unclear handwriting, smudges, crossed-out values and cut-off rows.
